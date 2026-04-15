@@ -1,0 +1,2 @@
+com.maritime.platform.common.mq.config.RabbitMQAutoConfiguration
+com.maritime.platform.common.mq.topology.IamTopologyConfiguration

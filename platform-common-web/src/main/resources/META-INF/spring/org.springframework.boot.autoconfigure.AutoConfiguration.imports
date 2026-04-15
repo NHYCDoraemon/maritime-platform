@@ -1,0 +1,2 @@
+com.maritime.platform.common.web.config.WebAutoConfiguration
+com.maritime.platform.common.web.config.JacksonLongToStringConfiguration

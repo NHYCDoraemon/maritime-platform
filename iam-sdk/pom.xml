@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.maritime.platform</groupId>
+        <artifactId>maritime-platform</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <groupId>com.maritime.platform</groupId>
+    <artifactId>iam-sdk</artifactId>
+    <name>iam-sdk</name>
+    <description>IAM SDK Spring Boot Starter for business system integration</description>
+
+    <properties>
+        <mybatis-plus.version>3.5.7</mybatis-plus.version>
+        <spring-cloud-alibaba.version>2023.0.3.4</spring-cloud-alibaba.version>
+    </properties>
+
+    <dependencies>
+        <!-- Platform Core: HmacSignatureValidator, R, ResultCode, constants -->
+        <dependency>
+            <groupId>com.maritime.platform</groupId>
+            <artifactId>platform-common-core</artifactId>
+        </dependency>
+
+        <!-- Annotations: @RequirePermission, @PublicApi (consumer provides) -->
+        <dependency>
+            <groupId>com.maritime.platform</groupId>
+            <artifactId>platform-common-security</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- MQ topology constants (optional, for event listener) -->
+        <dependency>
+            <groupId>com.maritime.platform</groupId>
+            <artifactId>platform-common-mq</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Spring Web MVC: HandlerMethod, RequestMappingHandlerMapping -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Servlet API (provided by web container) -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- MyBatis-Plus (optional, for DataPermissionInjector) -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <version>${mybatis-plus.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- AMQP (optional, for IamEventListener) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Redis (optional, for L2 cache clearing) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Nacos (optional, for resource auto-registration) -->
+        <dependency>
+            <groupId>com.alibaba.nacos</groupId>
+            <artifactId>nacos-client</artifactId>
+            <version>2.4.3</version>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+</project>

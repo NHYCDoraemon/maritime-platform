@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.maritime.platform</groupId>
+        <artifactId>maritime-platform</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>platform-common-metrics</artifactId>
+    <name>platform-common-metrics</name>
+    <description>Micrometer metrics: @BusinessMetric AOP, slow query detection</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.maritime.platform</groupId>
+            <artifactId>platform-common-core</artifactId>
+        </dependency>
+        <!-- Micrometer + Actuator (Prometheus endpoint) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <!-- AOP for @BusinessMetric -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <!-- MyBatis-Plus (optional, for SlowQueryInterceptor) -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- RabbitMQ (optional, for RabbitMQMetricsBinder) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+</project>
