@@ -7,7 +7,7 @@ Shared platform commons + iam-sdk for maritime microservices.
 | Module | Description |
 |--------|-------------|
 | `platform-bom` | BOM for version management — import this |
-| `platform-common-core` | Snowflake ID, R, ResultCode, pagination, IAM enums, events |
+| `platform-common-core` | Snowflake ID, R, ResultCode, pagination, IAM enums, events + @Sensitive AES-GCM field encryptor |
 | `platform-common-web` | Global exception handler, TraceId, request logging, XSS filter |
 | `platform-common-security` | JWT signing/verification, HMAC signature, SecurityUser context |
 | `platform-common-mybatis` | MyBatis-Plus config, BaseDO, auto-fill, pagination |
