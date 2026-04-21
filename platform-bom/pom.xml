@@ -132,6 +132,11 @@
                 <artifactId>platform-common-notification</artifactId>
                 <version>${platform.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.maritime.platform</groupId>
+                <artifactId>platform-common-tenant</artifactId>
+                <version>${platform.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
