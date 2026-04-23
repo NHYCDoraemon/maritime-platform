@@ -7,6 +7,13 @@ import com.maritime.platform.common.core.security.HmacSignatureValidator;
 import com.maritime.iam.sdk.model.NavSnapshot;
 import com.maritime.iam.sdk.model.PageSnapshot;
 import com.maritime.iam.sdk.model.ResourceNode;
+import com.maritime.iam.sdk.workflow.ValidateScopeRequest;
+import com.maritime.iam.sdk.workflow.ValidateScopeResponse;
+import com.maritime.iam.sdk.workflow.WorkflowOrgView;
+import com.maritime.iam.sdk.workflow.WorkflowPage;
+import com.maritime.iam.sdk.workflow.WorkflowScope;
+import com.maritime.iam.sdk.workflow.WorkflowUserContextView;
+import com.maritime.iam.sdk.workflow.WorkflowUserView;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -94,6 +101,102 @@ public class IamQueryClient {
                     list, new TypeReference<>() { });
         }
         return List.of();
+    }
+
+    // ─── Workflow-lookup (process-engine ADR-0011) ───────────────────
+    //
+    // All endpoints live under /api/iam/workflow/* and require the
+    // caller's app identity to hold the `iam:workflow:lookup` permission.
+    // Scope expansion runs on the IAM side; clients pass the enum + the
+    // initiator-org anchor (if the scope needs one) and the result
+    // page. Errors surface as RestClientException — callers decide
+    // whether to degrade gracefully (NoOp fallback returns empty).
+
+    public WorkflowPage<WorkflowUserView> findWorkflowUsersByRole(
+            String roleCode, WorkflowScope scope, String initiatorOrg,
+            String explicitOrgCode, String keyword,
+            int pageNo, int pageSize) {
+        UriComponentsBuilder b = UriComponentsBuilder
+                .fromHttpUrl(baseUrl + "/api/iam/workflow/users/by-role")
+                .queryParam("roleCode", roleCode)
+                .queryParam("scope", scope.name())
+                .queryParam("pageNo", pageNo)
+                .queryParam("pageSize", pageSize);
+        if (initiatorOrg != null) b.queryParam("initiatorOrg", initiatorOrg);
+        if (explicitOrgCode != null) b.queryParam("explicitOrgCode", explicitOrgCode);
+        if (keyword != null) b.queryParam("keyword", keyword);
+        WorkflowPage<WorkflowUserView> page = executeGet(
+                b.toUriString(),
+                new TypeReference<R<WorkflowPage<WorkflowUserView>>>() { });
+        return page != null ? page : WorkflowPage.empty(pageNo, pageSize);
+    }
+
+    public WorkflowPage<WorkflowUserView> findWorkflowUsersByPosition(
+            String positionCode, WorkflowScope scope, String initiatorOrg,
+            String explicitOrgCode, String keyword,
+            int pageNo, int pageSize) {
+        UriComponentsBuilder b = UriComponentsBuilder
+                .fromHttpUrl(baseUrl + "/api/iam/workflow/users/by-position")
+                .queryParam("positionCode", positionCode)
+                .queryParam("scope", scope.name())
+                .queryParam("pageNo", pageNo)
+                .queryParam("pageSize", pageSize);
+        if (initiatorOrg != null) b.queryParam("initiatorOrg", initiatorOrg);
+        if (explicitOrgCode != null) b.queryParam("explicitOrgCode", explicitOrgCode);
+        if (keyword != null) b.queryParam("keyword", keyword);
+        WorkflowPage<WorkflowUserView> page = executeGet(
+                b.toUriString(),
+                new TypeReference<R<WorkflowPage<WorkflowUserView>>>() { });
+        return page != null ? page : WorkflowPage.empty(pageNo, pageSize);
+    }
+
+    public WorkflowPage<WorkflowUserView> findWorkflowUsersByOrg(
+            String orgCode, WorkflowScope scope, String keyword,
+            int pageNo, int pageSize) {
+        UriComponentsBuilder b = UriComponentsBuilder
+                .fromHttpUrl(baseUrl + "/api/iam/workflow/users/by-org")
+                .queryParam("orgCode", orgCode)
+                .queryParam("scope", scope.name())
+                .queryParam("pageNo", pageNo)
+                .queryParam("pageSize", pageSize);
+        if (keyword != null) b.queryParam("keyword", keyword);
+        WorkflowPage<WorkflowUserView> page = executeGet(
+                b.toUriString(),
+                new TypeReference<R<WorkflowPage<WorkflowUserView>>>() { });
+        return page != null ? page : WorkflowPage.empty(pageNo, pageSize);
+    }
+
+    public WorkflowUserContextView getWorkflowUserContext(String userId) {
+        String url = UriComponentsBuilder
+                .fromHttpUrl(baseUrl + "/api/iam/workflow/users/"
+                        + userId + "/context")
+                .toUriString();
+        return executeGet(url,
+                new TypeReference<R<WorkflowUserContextView>>() { });
+    }
+
+    public WorkflowPage<WorkflowOrgView> findRoutableOrgs(
+            String initiatorOrg, int pageNo, int pageSize) {
+        String url = UriComponentsBuilder
+                .fromHttpUrl(baseUrl + "/api/iam/workflow/orgs/routable")
+                .queryParam("initiatorOrg", initiatorOrg)
+                .queryParam("pageNo", pageNo)
+                .queryParam("pageSize", pageSize)
+                .toUriString();
+        WorkflowPage<WorkflowOrgView> page = executeGet(url,
+                new TypeReference<R<WorkflowPage<WorkflowOrgView>>>() { });
+        return page != null ? page : WorkflowPage.empty(pageNo, pageSize);
+    }
+
+    public ValidateScopeResponse validateWorkflowScope(ValidateScopeRequest request) {
+        String url = baseUrl + "/api/iam/workflow/users/validate-scope";
+        ValidateScopeResponse resp = executePost(url, request,
+                new TypeReference<R<ValidateScopeResponse>>() { });
+        if (resp == null) {
+            return new ValidateScopeResponse(false, "IAM_UNREACHABLE",
+                    "no response from iam-query-service");
+        }
+        return resp;
     }
 
     private <T> T executeGet(String url,
