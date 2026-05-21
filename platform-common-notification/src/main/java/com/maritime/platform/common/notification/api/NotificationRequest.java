@@ -7,17 +7,25 @@ import java.util.Set;
 /**
  * Immutable request describing a single notification to dispatch.
  *
- * <p>Deliberately uses only primitive types so the platform library remains free of
- * business-domain concepts. Recipients are opaque string references — the concrete
- * channel handler decides how to resolve them (user id, email, phone, etc.).</p>
+ * <p>
+ * Deliberately uses only primitive types so the platform library remains free
+ * of
+ * business-domain concepts. Recipients are opaque string references — the
+ * concrete
+ * channel handler decides how to resolve them (user id, email, phone, etc.).
+ * </p>
  *
  * @param templateCode   non-blank template identifier resolved by the handler
  * @param channels       non-empty set of channels to deliver through
- * @param recipients     opaque recipient references; {@code null} is normalised to empty
- * @param params         template parameters; {@code null} is normalised to empty
+ * @param recipients     opaque recipient references; {@code null} is normalised
+ *                       to empty
+ * @param params         template parameters; {@code null} is normalised to
+ *                       empty
  * @param tenantId       non-blank tenant identifier for multi-tenant routing
- * @param correlationId  optional trace / business correlation id; {@code null} is normalised to empty string
- * @param idempotencyKey nullable; when set, implementations may de-dupe duplicate dispatches
+ * @param correlationId  optional trace / business correlation id; {@code null}
+ *                       is normalised to empty string
+ * @param idempotencyKey nullable; when set, implementations may de-dupe
+ *                       duplicate dispatches
  */
 public record NotificationRequest(
         String templateCode,
@@ -26,8 +34,7 @@ public record NotificationRequest(
         Map<String, Object> params,
         String tenantId,
         String correlationId,
-        String idempotencyKey
-) {
+        String idempotencyKey) {
     public NotificationRequest {
         if (templateCode == null || templateCode.isBlank()) {
             throw new IllegalArgumentException("templateCode cannot be blank");
@@ -43,4 +50,5 @@ public record NotificationRequest(
         params = params == null ? Map.of() : Map.copyOf(params);
         correlationId = correlationId == null ? "" : correlationId;
     }
+
 }
