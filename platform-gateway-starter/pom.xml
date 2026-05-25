@@ -68,6 +68,20 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Sentinel Gateway (optional: only needed when maritime.gateway.sentinel.enabled=true) -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-alibaba-sentinel-gateway</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Knife4j Gateway (optional: only needed when maritime.gateway.knife4j.enabled=true) -->
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-gateway-spring-boot-starter</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -1,2 +1,4 @@
 com.maritime.platform.gateway.autoconfigure.GatewayAutoConfiguration
 com.maritime.platform.gateway.autoconfigure.GatewayRedisConfiguration
+com.maritime.platform.gateway.sentinel.GatewaySentinelAutoConfiguration
+com.maritime.platform.gateway.knife4j.GatewayKnife4jAutoConfiguration
