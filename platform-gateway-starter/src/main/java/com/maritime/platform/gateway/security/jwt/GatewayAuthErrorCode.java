@@ -14,4 +14,6 @@ public final class GatewayAuthErrorCode {
 	public static final String SESSION_EXPIRED = "SESSION_EXPIRED";
 	public static final String TOKEN_BLACKLISTED = "TOKEN_BLACKLISTED";
 	public static final String USER_DISABLED = "USER_DISABLED";
+	public static final String NONCE_REQUIRED = "NONCE_REQUIRED";
+	public static final String REPLAY_DETECTED = "REPLAY_DETECTED";
 }
