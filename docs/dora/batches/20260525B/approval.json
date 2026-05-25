@@ -1,0 +1,31 @@
+{
+  "approval_version": 1,
+  "approved_at": "2026-05-25T16:32:43+08:00",
+  "approved_batch_hash": "sha256:24ae197ae56825650b1afb383338c5315d75c88bff572731aa02db10c74c7af3",
+  "approved_by": "raymond",
+  "approved_plane_creates": {
+    "cycles": [
+      "Gateway Starter Fixes"
+    ],
+    "pages": [
+      "Program Page",
+      "Batch Page"
+    ],
+    "root_epic_issue": true,
+    "task_issues": 4
+  },
+  "approved_task_ids": [
+    "MP-GWSTARTER-20260525B-T01",
+    "MP-GWSTARTER-20260525B-T02",
+    "MP-GWSTARTER-20260525B-T03",
+    "MP-GWSTARTER-20260525B-T04"
+  ],
+  "batch_id": "20260525B",
+  "policy": {
+    "allow_create_cycles": true,
+    "allow_create_root_epic": true,
+    "allow_create_task_issues": true,
+    "allow_update_existing_submitted_issues": false
+  },
+  "program_id": "platform-gateway-starter-fixes"
+}
