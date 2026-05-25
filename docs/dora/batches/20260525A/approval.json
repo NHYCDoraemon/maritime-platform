@@ -1,0 +1,42 @@
+{
+  "approval_version": 1,
+  "approved_at": "2026-05-25T12:04:24+08:00",
+  "approved_batch_hash": "sha256:bfec93696104c9df3462294e21d3ffddbb7c96f32e9d3e1c817dbf0b1e986390",
+  "approved_by": "raymond",
+  "approved_plane_creates": {
+    "cycles": [
+      "Gateway Starter MVP"
+    ],
+    "pages": [
+      "Program Page",
+      "Batch Page"
+    ],
+    "root_epic_issue": true,
+    "task_issues": 15
+  },
+  "approved_task_ids": [
+    "MP-GWSTARTER-20260525A-T01",
+    "MP-GWSTARTER-20260525A-T02",
+    "MP-GWSTARTER-20260525A-T03",
+    "MP-GWSTARTER-20260525A-T04",
+    "MP-GWSTARTER-20260525A-T05",
+    "MP-GWSTARTER-20260525A-T06",
+    "MP-GWSTARTER-20260525A-T07",
+    "MP-GWSTARTER-20260525A-T08",
+    "MP-GWSTARTER-20260525A-T09",
+    "MP-GWSTARTER-20260525A-T10",
+    "MP-GWSTARTER-20260525A-T11",
+    "MP-GWSTARTER-20260525A-T12",
+    "MP-GWSTARTER-20260525A-T13",
+    "MP-GWSTARTER-20260525A-T14",
+    "MP-GWSTARTER-20260525A-T15"
+  ],
+  "batch_id": "20260525A",
+  "policy": {
+    "allow_create_cycles": true,
+    "allow_create_root_epic": true,
+    "allow_create_task_issues": true,
+    "allow_update_existing_submitted_issues": false
+  },
+  "program_id": "platform-gateway-starter"
+}
