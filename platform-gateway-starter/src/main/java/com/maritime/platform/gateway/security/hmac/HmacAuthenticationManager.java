@@ -132,7 +132,12 @@ public class HmacAuthenticationManager {
 					}
 
 					String appCode = credential.getAppCode() != null ? credential.getAppCode() : appKey;
-					return Mono.just(new GatewayPrincipal.App(appKey, appCode));
+					return Mono.just(new GatewayPrincipal.App(
+							appKey, appCode,
+							credential.getAppId(),
+							credential.getTenantId(),
+							credential.getTenantCode(),
+							credential.getPermissions()));
 				});
 	}
 

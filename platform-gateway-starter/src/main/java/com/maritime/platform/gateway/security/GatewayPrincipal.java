@@ -25,6 +25,17 @@ public sealed interface GatewayPrincipal permits GatewayPrincipal.User, GatewayP
 		}
 	}
 
-	record App(String appKey, String appCode) implements GatewayPrincipal {
+	record App(
+			String appKey,
+			String appCode,
+			String appId,
+			String tenantId,
+			String tenantCode,
+			java.util.List<String> permissions
+	) implements GatewayPrincipal {
+
+		public App {
+			permissions = permissions != null ? List.copyOf(permissions) : List.of();
+		}
 	}
 }

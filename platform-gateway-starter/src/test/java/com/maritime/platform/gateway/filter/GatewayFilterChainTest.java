@@ -2,6 +2,7 @@ package com.maritime.platform.gateway.filter;
 
 import com.maritime.platform.gateway.security.GatewaySecurityPolicyCustomizer;
 import com.maritime.platform.gateway.security.AuthMode;
+import com.maritime.platform.gateway.security.GatewayPrincipal;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
 import com.maritime.platform.gateway.security.RouteSecurityPolicy;
 import com.maritime.platform.gateway.security.RouteSecurityPolicyResolver;
@@ -96,7 +97,7 @@ class GatewayFilterChainTest {
 			assertThat(new TraceIdGatewayFilter()).isInstanceOf(Ordered.class);
 			assertThat(new UntrustedHeaderStripFilter()).isInstanceOf(Ordered.class);
 			assertThat(new RequestLogGatewayFilter()).isInstanceOf(Ordered.class);
-			assertThat(new ContextHeaderInjectionFilter()).isInstanceOf(Ordered.class);
+			assertThat(new ContextHeaderInjectionFilter(new TrustedHeaderWriter(), null)).isInstanceOf(Ordered.class);
 		}
 
 		@Test
@@ -351,9 +352,10 @@ class GatewayFilterChainTest {
 	class ContextInjection {
 
 		@Test
-		@DisplayName("placeholder filter passes request through")
-		void passesThrough() {
-			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter();
+		@DisplayName("no principal passes request through unchanged")
+		void passesThroughWhenNoPrincipal() {
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null);
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/api/data"));
 
@@ -380,7 +382,8 @@ class GatewayFilterChainTest {
 			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter();
 			RequestLogGatewayFilter logFilter = new RequestLogGatewayFilter();
 			RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
-			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter();
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
 
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/public/health")
@@ -457,6 +460,141 @@ class GatewayFilterChainTest {
 			RouteSecurityPolicy policy = captured.get().getAttribute(RouteSecurityPolicyFilter.POLICY_ATTR);
 			assertThat(policy.getMatchedRuleId()).startsWith("PUBLIC:");
 			assertThat(policy.getMatchedRuleId()).contains("/actuator/**");
+		}
+
+		// ---------- forged header strip + trusted injection end-to-end ----------
+
+		@Test
+		@DisplayName("forged JWT headers stripped, then gateway-injected headers prevail")
+		void forgedJwtHeadersStrippedAndInjected() {
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter();
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+
+			GatewayPrincipal.User user = new GatewayPrincipal.User(
+					"real-user", "RealName", "real-session",
+					"ORG-REAL", "Real Org",
+					List.of("user"),
+					"SSO", "tenant-real");
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/secure")
+							.header("X-User-Id", "forged-user")
+							.header("X-User-Name", "Hacker")
+							.header("X-Session-Id", "fake-session")
+							.header("X-Active-Org-Code", "EVIL")
+							.header("X-Active-Org-Name", "Evil Corp")
+							.header("X-Tenant-Id", "fake-tenant")
+							.header("X-System-Scope", "admin,root")
+							.header("X-User-Source", "internal"));
+
+			// Step 1: strip untrusted headers
+			AtomicReference<ServerWebExchange> afterStrip = new AtomicReference<>();
+			strip.filter(exchange, capturingChain(afterStrip)).block();
+			ServerWebExchange stripped = afterStrip.get();
+
+			// All forged headers must be gone
+			var strippedHeaders = stripped.getRequest().getHeaders();
+			assertThat(strippedHeaders.getFirst("X-User-Id")).isNull();
+			assertThat(strippedHeaders.getFirst("X-User-Name")).isNull();
+			assertThat(strippedHeaders.getFirst("X-Session-Id")).isNull();
+
+			// Step 2: set the verified principal
+			GatewayPrincipal.User verifiedUser = new GatewayPrincipal.User(
+					"real-user", "RealName", "real-session",
+					"ORG-REAL", "Real Org",
+					List.of("user"),
+					"SSO", "tenant-real");
+			stripped.getAttributes().put(GatewayPrincipal.ATTRIBUTE, verifiedUser);
+
+			// Step 3: inject trusted headers
+			AtomicReference<ServerWebExchange> afterInjection = new AtomicReference<>();
+			inject.filter(stripped, capturingChain(afterInjection)).block();
+			ServerWebExchange finalExchange = afterInjection.get();
+
+			var finalHeaders = finalExchange.getRequest().getHeaders();
+			assertThat(finalHeaders.getFirst("X-User-Id")).isEqualTo("real-user");
+			assertThat(finalHeaders.getFirst("X-User-Name")).isEqualTo("RealName");
+			assertThat(finalHeaders.getFirst("X-Session-Id")).isEqualTo("real-session");
+			assertThat(finalHeaders.getFirst("X-Active-Org-Code")).isEqualTo("ORG-REAL");
+			assertThat(finalHeaders.getFirst("X-Tenant-Id")).isEqualTo("tenant-real");
+		}
+
+		@Test
+		@DisplayName("forged app headers stripped, then HMAC-injected headers prevail")
+		void forgedAppHeadersStrippedAndInjected() {
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter();
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+
+			GatewayPrincipal.App app = new GatewayPrincipal.App(
+					"real-app-key", "real-app-code", "real-app-id",
+					"real-tenant", "RT001", List.of("read"));
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/openapi/data")
+							.header("X-App-Code", "forged-app")
+							.header("X-App-Id", "999")
+							.header("X-Tenant-Code", "HACKED")
+							.header("X-Tenant-Id", "fake-tenant")
+							.header("X-Verified-App-Code", "forged-verified")
+							.header("X-App-Permissions", "admin,delete"));
+
+			// Step 1: strip
+			AtomicReference<ServerWebExchange> afterStrip = new AtomicReference<>();
+			strip.filter(exchange, capturingChain(afterStrip)).block();
+			ServerWebExchange stripped = afterStrip.get();
+
+			assertThat(stripped.getRequest().getHeaders().getFirst("X-App-Code")).isNull();
+			assertThat(stripped.getRequest().getHeaders().getFirst("X-App-Id")).isNull();
+
+			// Step 2: set principal
+			stripped.getAttributes().put(GatewayPrincipal.ATTRIBUTE, app);
+
+			// Step 3: inject
+			AtomicReference<ServerWebExchange> afterInjection = new AtomicReference<>();
+			inject.filter(stripped, capturingChain(afterInjection)).block();
+			ServerWebExchange finalExchange = afterInjection.get();
+
+			var finalHeaders = finalExchange.getRequest().getHeaders();
+			assertThat(finalHeaders.getFirst("X-Verified-App-Code")).isEqualTo("real-app-code");
+			assertThat(finalHeaders.getFirst("X-App-Code")).isEqualTo("real-app-code");
+			assertThat(finalHeaders.getFirst("X-App-Id")).isEqualTo("real-app-id");
+			assertThat(finalHeaders.getFirst("X-Tenant-Code")).isEqualTo("RT001");
+			assertThat(finalHeaders.getFirst("X-Tenant-Id")).isEqualTo("real-tenant");
+			assertThat(finalHeaders.getFirst("X-App-Permissions")).isEqualTo("read");
+		}
+
+		@Test
+		@DisplayName("forged headers stripped even when no auth principal (public paths)")
+		void forgedHeadersStrippedEvenWithoutAuth() {
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter();
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/public/health")
+							.header("X-User-Id", "forged-user")
+							.header("X-App-Code", "forged-app")
+							.header("X-Tenant-Id", "fake-tenant"));
+
+			// Strip
+			AtomicReference<ServerWebExchange> afterStrip = new AtomicReference<>();
+			strip.filter(exchange, capturingChain(afterStrip)).block();
+			ServerWebExchange stripped = afterStrip.get();
+
+			// No principal on public path
+			assertThat((Object) stripped.getAttribute(GatewayPrincipal.ATTRIBUTE)).isNull();
+
+			// Inject (should pass through since no principal)
+			AtomicReference<ServerWebExchange> afterInjection = new AtomicReference<>();
+			inject.filter(stripped, capturingChain(afterInjection)).block();
+			ServerWebExchange finalExchange = afterInjection.get();
+
+			var finalHeaders = finalExchange.getRequest().getHeaders();
+			assertThat(finalHeaders.getFirst("X-User-Id")).isNull();
+			assertThat(finalHeaders.getFirst("X-App-Code")).isNull();
+			assertThat(finalHeaders.getFirst("X-Tenant-Id")).isNull();
 		}
 	}
 

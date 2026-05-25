@@ -44,6 +44,14 @@ class HmacAuthenticationGatewayFilterTest {
 
 	private static final String APP_KEY = "app-001";
 	private static final String APP_CODE = "test-app";
+	private static final String APP_ID = "app-id-001";
+	private static final String TENANT_ID = "tenant-001";
+	private static final String TENANT_CODE = "T001";
+	private static final java.util.List<String> PERMISSIONS = java.util.List.of("read", "write");
+
+	private static GatewayPrincipal.App testAppPrincipal() {
+		return new GatewayPrincipal.App(APP_KEY, APP_CODE, APP_ID, TENANT_ID, TENANT_CODE, PERMISSIONS);
+	}
 	private static final String APP_KEY_HEADER = "X-App-Key";
 	private static final String TIMESTAMP_HEADER = "X-Timestamp";
 	private static final String NONCE_HEADER = "X-Nonce";
@@ -262,7 +270,7 @@ class HmacAuthenticationGatewayFilterTest {
 			MockServerWebExchange exchange = exchange("POST", "/api/data");
 			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
 
-			GatewayPrincipal.App expectedPrincipal = new GatewayPrincipal.App(APP_KEY, APP_CODE);
+			GatewayPrincipal.App expectedPrincipal = testAppPrincipal();
 			when(authManager.authenticate(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 					.thenReturn(Mono.just(expectedPrincipal));
 
@@ -289,7 +297,7 @@ class HmacAuthenticationGatewayFilterTest {
 					new RouteSecurityPolicy(AuthMode.JWT_OR_HMAC, "dual-route"));
 			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
 
-			GatewayPrincipal.App expectedPrincipal = new GatewayPrincipal.App(APP_KEY, APP_CODE);
+			GatewayPrincipal.App expectedPrincipal = testAppPrincipal();
 			when(authManager.authenticate(any(), any(), any(), any(), any(), any(), any(), any(), any()))
 					.thenReturn(Mono.just(expectedPrincipal));
 
@@ -365,7 +373,7 @@ class HmacAuthenticationGatewayFilterTest {
 			MockServerWebExchange exchange = exchangeWithBody("POST", "/api/data", requestBody);
 			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
 
-			GatewayPrincipal.App expectedPrincipal = new GatewayPrincipal.App(APP_KEY, APP_CODE);
+			GatewayPrincipal.App expectedPrincipal = testAppPrincipal();
 			when(authManager.authenticate(any(), any(), any(),
 					any(), any(), any(), any(), any(), any()))
 					.thenReturn(Mono.just(expectedPrincipal));
@@ -385,7 +393,7 @@ class HmacAuthenticationGatewayFilterTest {
 			MockServerWebExchange exchange = exchange("GET", "/api/data");
 			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
 
-			GatewayPrincipal.App expectedPrincipal = new GatewayPrincipal.App(APP_KEY, APP_CODE);
+			GatewayPrincipal.App expectedPrincipal = testAppPrincipal();
 			when(authManager.authenticate(any(), any(), any(),
 					any(), any(), any(), any(), any(), any()))
 					.thenReturn(Mono.just(expectedPrincipal));
