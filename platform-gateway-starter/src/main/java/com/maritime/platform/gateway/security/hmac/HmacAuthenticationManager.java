@@ -25,8 +25,9 @@ import java.util.HexFormat;
  * <ol>
  *   <li>Validate timestamp is within the configured tolerance window</li>
  *   <li>Validate nonce length meets the configured minimum</li>
- *   <li>Check nonce has not been replayed via Redis SETNX</li>
  *   <li>Compute SHA-256 of the request body and compare with client digest (constant-time)</li>
+ *   <li>Check nonce has not been replayed via Redis SETNX</li>
+ *   <li>Resolve the app credential via {@link AppCredentialResolver}</li>
  *   <li>Build the canonical request string and compute HMAC-SHA256</li>
  *   <li>Compare computed signature with client signature (constant-time)</li>
  * </ol>
@@ -41,20 +42,24 @@ public class HmacAuthenticationManager {
 	private final GatewaySecurityProperties properties;
 	private final HmacCanonicalRequestBuilder canonicalBuilder;
 	private final HmacNonceValidator nonceValidator;
+	private final AppCredentialResolver credentialResolver;
 	private final Clock clock;
 
 	public HmacAuthenticationManager(GatewaySecurityProperties properties,
 			HmacCanonicalRequestBuilder canonicalBuilder,
-			HmacNonceValidator nonceValidator) {
-		this(properties, canonicalBuilder, nonceValidator, Clock.systemUTC());
+			HmacNonceValidator nonceValidator,
+			AppCredentialResolver credentialResolver) {
+		this(properties, canonicalBuilder, nonceValidator, credentialResolver, Clock.systemUTC());
 	}
 
 	public HmacAuthenticationManager(GatewaySecurityProperties properties,
 			HmacCanonicalRequestBuilder canonicalBuilder,
-			HmacNonceValidator nonceValidator, Clock clock) {
+			HmacNonceValidator nonceValidator,
+			AppCredentialResolver credentialResolver, Clock clock) {
 		this.properties = properties;
 		this.canonicalBuilder = canonicalBuilder;
 		this.nonceValidator = nonceValidator;
+		this.credentialResolver = credentialResolver;
 		this.clock = clock;
 	}
 
@@ -111,48 +116,24 @@ public class HmacAuthenticationManager {
 					"Body digest does not match"));
 		}
 
-		// 4. Validate nonce (Redis SETNX)
+		// 4. Validate nonce (Redis SETNX), then resolve credential
 		return nonceValidator.validate(appKey, nonce)
-				.then(Mono.fromCallable(() -> {
+				.then(Mono.defer(() -> credentialResolver.resolve(appKey)))
+				.flatMap(credential -> {
 					// 5. Build canonical string and compute signature
 					String canonical = canonicalBuilder.build(appKey, method, rawPath,
 							rawQuery, timestamp, nonce, clientDigest);
 
-					String appSecret = resolveAppSecret(appKey);
-					if (appSecret == null) {
-						throw new JwtAuthenticationException(
-								GatewayAuthErrorCode.INVALID_SIGNATURE,
-								"Unknown app key: " + appKey);
-					}
-
-					String computedSig = hmacSha256Hex(appSecret, canonical);
+					String computedSig = hmacSha256Hex(credential.getAppSecret(), canonical);
 					if (!constantTimeEquals(computedSig, clientSig)) {
-						throw new JwtAuthenticationException(
+						return Mono.error(new JwtAuthenticationException(
 								GatewayAuthErrorCode.INVALID_SIGNATURE,
-								"Signature does not match");
+								"Signature does not match"));
 					}
 
-					String appCode = resolveAppCode(appKey);
-					return new GatewayPrincipal.App(appKey, appCode != null ? appCode : appKey);
-				}));
-	}
-
-	private String resolveAppSecret(String appKey) {
-		for (GatewaySecurityProperties.ConfigApp app : properties.getHmac().getCredentials().getApps()) {
-			if (app.getAppKey().equals(appKey) && app.isEnabled()) {
-				return app.getAppSecret();
-			}
-		}
-		return null;
-	}
-
-	private String resolveAppCode(String appKey) {
-		for (GatewaySecurityProperties.ConfigApp app : properties.getHmac().getCredentials().getApps()) {
-			if (app.getAppKey().equals(appKey)) {
-				return app.getAppCode();
-			}
-		}
-		return null;
+					String appCode = credential.getAppCode() != null ? credential.getAppCode() : appKey;
+					return Mono.just(new GatewayPrincipal.App(appKey, appCode));
+				});
 	}
 
 	static String sha256Hex(byte[] data) {

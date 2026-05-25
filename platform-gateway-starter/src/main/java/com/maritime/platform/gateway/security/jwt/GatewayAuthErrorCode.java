@@ -19,4 +19,6 @@ public final class GatewayAuthErrorCode {
 	public static final String MISSING_HMAC_HEADERS = "MISSING_HMAC_HEADERS";
 	public static final String TIMESTAMP_EXPIRED = "TIMESTAMP_EXPIRED";
 	public static final String INVALID_SIGNATURE = "INVALID_SIGNATURE";
+	public static final String UNKNOWN_APP = "UNKNOWN_APP";
+	public static final String APP_DISABLED = "APP_DISABLED";
 }

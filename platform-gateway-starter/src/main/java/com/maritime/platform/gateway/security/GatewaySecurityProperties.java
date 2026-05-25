@@ -321,6 +321,7 @@ public class GatewaySecurityProperties implements InitializingBean {
         private String tenantCode = "tenantCode";
         private String permissions = "permissions";
         private String enabled = "isEnabled";
+        private String enabledTrueValue = "true";
 
         public String getAppSecret() { return appSecret; }
         public void setAppSecret(String appSecret) { this.appSecret = appSecret; }
@@ -336,6 +337,8 @@ public class GatewaySecurityProperties implements InitializingBean {
         public void setPermissions(String permissions) { this.permissions = permissions; }
         public String getEnabled() { return enabled; }
         public void setEnabled(String enabled) { this.enabled = enabled; }
+        public String getEnabledTrueValue() { return enabledTrueValue; }
+        public void setEnabledTrueValue(String enabledTrueValue) { this.enabledTrueValue = enabledTrueValue; }
     }
 
     @Validated

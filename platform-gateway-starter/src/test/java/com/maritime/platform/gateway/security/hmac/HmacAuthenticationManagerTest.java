@@ -23,9 +23,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @DisplayName("HmacAuthenticationManager tests")
@@ -40,6 +38,9 @@ class HmacAuthenticationManagerTest {
 	@Mock
 	private HmacNonceValidator nonceValidator;
 
+	@Mock
+	private AppCredentialResolver credentialResolver;
+
 	private GatewaySecurityProperties properties;
 	private HmacCanonicalRequestBuilder canonicalBuilder;
 	private Clock clock;
@@ -49,19 +50,22 @@ class HmacAuthenticationManagerTest {
 		properties = new GatewaySecurityProperties();
 		properties.getHmac().setEnabled(true);
 
-		GatewaySecurityProperties.ConfigApp app = new GatewaySecurityProperties.ConfigApp();
-		app.setAppKey(APP_KEY);
-		app.setAppSecret(APP_SECRET);
-		app.setAppCode(APP_CODE);
-		app.setEnabled(true);
-		properties.getHmac().getCredentials().getApps().add(app);
-
 		canonicalBuilder = new HmacCanonicalRequestBuilder();
 		clock = Clock.fixed(FIXED_TIME, ZoneOffset.UTC);
 	}
 
 	private HmacAuthenticationManager manager() {
-		return new HmacAuthenticationManager(properties, canonicalBuilder, nonceValidator, clock);
+		return new HmacAuthenticationManager(properties, canonicalBuilder,
+				nonceValidator, credentialResolver, clock);
+	}
+
+	private AppCredential validCredential() {
+		return AppCredential.builder()
+				.appKey(APP_KEY)
+				.appSecret(APP_SECRET)
+				.appCode(APP_CODE)
+				.enabled(true)
+				.build();
 	}
 
 	/**
@@ -82,6 +86,16 @@ class HmacAuthenticationManagerTest {
 		return String.valueOf(FIXED_TIME.toEpochMilli());
 	}
 
+	private void stubNonceOk(String appKey, String nonce) {
+		when(nonceValidator.validate(eq(appKey), eq(nonce)))
+				.thenReturn(Mono.empty());
+	}
+
+	private void stubCredentialOk() {
+		when(credentialResolver.resolve(eq(APP_KEY)))
+				.thenReturn(Mono.just(validCredential()));
+	}
+
 	// ---------- successful authentication ----------
 
 	@Nested
@@ -97,8 +111,8 @@ class HmacAuthenticationManagerTest {
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
 			String signature = sign(timestamp, nonce, body);
 
-			when(nonceValidator.validate(eq(APP_KEY), eq(nonce)))
-					.thenReturn(Mono.empty());
+			stubNonceOk(APP_KEY, nonce);
+			stubCredentialOk();
 
 			StepVerifier.create(manager().authenticate(APP_KEY, timestamp, nonce,
 							bodyDigest, signature, "POST", "/api/data", null, body))
@@ -119,8 +133,8 @@ class HmacAuthenticationManagerTest {
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
 			String signature = sign("GET", "/api/data", timestamp, nonce, body);
 
-			when(nonceValidator.validate(eq(APP_KEY), eq(nonce)))
-					.thenReturn(Mono.empty());
+			stubNonceOk(APP_KEY, nonce);
+			stubCredentialOk();
 
 			StepVerifier.create(manager().authenticate(APP_KEY, timestamp, nonce,
 							bodyDigest, signature, "GET", "/api/data", null, body))
@@ -137,8 +151,8 @@ class HmacAuthenticationManagerTest {
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
 			String signature = sign("GET", "/api/data", timestamp, nonce, body);
 
-			when(nonceValidator.validate(eq(APP_KEY), eq(nonce)))
-					.thenReturn(Mono.empty());
+			stubNonceOk(APP_KEY, nonce);
+			stubCredentialOk();
 
 			StepVerifier.create(manager().authenticate(APP_KEY, timestamp, nonce,
 							bodyDigest, signature, "GET", "/api/data", null, body))
@@ -156,15 +170,14 @@ class HmacAuthenticationManagerTest {
 		@Test
 		@DisplayName("future timestamp within tolerance is accepted")
 		void futureTimestampWithinTolerance() {
-			// 4 minutes in the future (tolerance is 5 minutes)
 			String timestamp = String.valueOf(FIXED_TIME.toEpochMilli() + Duration.ofMinutes(4).toMillis());
 			String nonce = "nonce-0123456789abcdef";
 			byte[] body = new byte[0];
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
 			String signature = sign(timestamp, nonce, body);
 
-			when(nonceValidator.validate(eq(APP_KEY), eq(nonce)))
-					.thenReturn(Mono.empty());
+			stubNonceOk(APP_KEY, nonce);
+			stubCredentialOk();
 
 			StepVerifier.create(manager().authenticate(APP_KEY, timestamp, nonce,
 							bodyDigest, signature, "POST", "/api/data", null, body))
@@ -175,7 +188,6 @@ class HmacAuthenticationManagerTest {
 		@Test
 		@DisplayName("timestamp beyond tolerance returns TIMESTAMP_EXPIRED")
 		void timestampBeyondTolerance() {
-			// 10 minutes ago (tolerance is 5 minutes)
 			String timestamp = String.valueOf(FIXED_TIME.toEpochMilli() - Duration.ofMinutes(10).toMillis());
 			String nonce = "nonce-0123456789abcdef";
 			byte[] body = new byte[0];
@@ -289,8 +301,8 @@ class HmacAuthenticationManagerTest {
 			byte[] body = new byte[0];
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
 
-			when(nonceValidator.validate(eq(APP_KEY), eq(nonce)))
-					.thenReturn(Mono.empty());
+			stubNonceOk(APP_KEY, nonce);
+			stubCredentialOk();
 
 			StepVerifier.create(manager().authenticate(APP_KEY, timestamp, nonce,
 							bodyDigest, "0000000000000000000000000000000000000000000000000000000000000000",
@@ -303,7 +315,7 @@ class HmacAuthenticationManagerTest {
 		}
 
 		@Test
-		@DisplayName("unknown app key returns INVALID_SIGNATURE")
+		@DisplayName("unknown app key returns UNKNOWN_APP from resolver")
 		void unknownAppKey() {
 			String timestamp = validTimestamp();
 			String nonce = "nonce-0123456789abcdef";
@@ -313,13 +325,17 @@ class HmacAuthenticationManagerTest {
 
 			when(nonceValidator.validate(eq("unknown-app"), eq(nonce)))
 					.thenReturn(Mono.empty());
+			when(credentialResolver.resolve(eq("unknown-app")))
+					.thenReturn(Mono.error(new JwtAuthenticationException(
+							GatewayAuthErrorCode.UNKNOWN_APP,
+							"Unknown app key: unknown-app")));
 
 			StepVerifier.create(manager().authenticate("unknown-app", timestamp, nonce,
 							bodyDigest, signature, "POST", "/api/data", null, body))
 					.verifyErrorSatisfies(e -> {
 						assertThat(e)
 								.isInstanceOf(JwtAuthenticationException.class)
-								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.INVALID_SIGNATURE);
+								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.UNKNOWN_APP);
 						assertThat(e.getMessage()).contains("Unknown app key");
 					});
 		}
@@ -331,11 +347,10 @@ class HmacAuthenticationManagerTest {
 			String nonce = "nonce-0123456789abcdef";
 			byte[] body = new byte[0];
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
-			// Sign for /api/data but request is for /api/other
 			String signature = sign(timestamp, nonce, body);
 
-			when(nonceValidator.validate(eq(APP_KEY), eq(nonce)))
-					.thenReturn(Mono.empty());
+			stubNonceOk(APP_KEY, nonce);
+			stubCredentialOk();
 
 			StepVerifier.create(manager().authenticate(APP_KEY, timestamp, nonce,
 							bodyDigest, signature, "POST", "/api/other", null, body))
@@ -356,21 +371,20 @@ class HmacAuthenticationManagerTest {
 		}
 	}
 
-	// ---------- App principal creation ----------
+	// ---------- App credential resolution ----------
 
 	@Nested
-	@DisplayName("App principal creation")
-	class AppPrincipal {
+	@DisplayName("App credential resolution")
+	class AppCredentialResolution {
 
 		@Test
-		@DisplayName("appCode falls back to appKey when config app has no code")
+		@DisplayName("appCode falls back to appKey when credential has no code")
 		void appCodeFallsBackToAppKey() {
-			properties.getHmac().getCredentials().getApps().clear();
-			GatewaySecurityProperties.ConfigApp app = new GatewaySecurityProperties.ConfigApp();
-			app.setAppKey("no-code-app");
-			app.setAppSecret("secret");
-			app.setEnabled(true);
-			properties.getHmac().getCredentials().getApps().add(app);
+			AppCredential noCodeCred = AppCredential.builder()
+					.appKey("no-code-app")
+					.appSecret("secret")
+					.enabled(true)
+					.build();
 
 			String timestamp = validTimestamp();
 			String nonce = "nonce-0123456789abcdef";
@@ -382,6 +396,8 @@ class HmacAuthenticationManagerTest {
 
 			when(nonceValidator.validate(eq("no-code-app"), eq(nonce)))
 					.thenReturn(Mono.empty());
+			when(credentialResolver.resolve(eq("no-code-app")))
+					.thenReturn(Mono.just(noCodeCred));
 
 			StepVerifier.create(manager().authenticate("no-code-app", timestamp, nonce,
 							bodyDigest, signature, "POST", "/api/data", null, body))
@@ -390,32 +406,26 @@ class HmacAuthenticationManagerTest {
 		}
 
 		@Test
-		@DisplayName("disabled app returns INVALID_SIGNATURE")
-		void disabledAppReturnsInvalidSignature() {
-			properties.getHmac().getCredentials().getApps().clear();
-			GatewaySecurityProperties.ConfigApp app = new GatewaySecurityProperties.ConfigApp();
-			app.setAppKey("disabled-app");
-			app.setAppSecret("secret");
-			app.setEnabled(false);
-			properties.getHmac().getCredentials().getApps().add(app);
-
+		@DisplayName("disabled app returns APP_DISABLED from resolver")
+		void disabledAppReturnsAppDisabled() {
 			String timestamp = validTimestamp();
 			String nonce = "nonce-0123456789abcdef";
 			byte[] body = new byte[0];
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
-			String canonical = canonicalBuilder.build("disabled-app", "POST", "/api/data",
-					null, timestamp, nonce, bodyDigest);
-			String signature = HmacAuthenticationManager.hmacSha256Hex("secret", canonical);
 
 			when(nonceValidator.validate(eq("disabled-app"), eq(nonce)))
 					.thenReturn(Mono.empty());
+			when(credentialResolver.resolve(eq("disabled-app")))
+					.thenReturn(Mono.error(new JwtAuthenticationException(
+							GatewayAuthErrorCode.APP_DISABLED,
+							"App is disabled: disabled-app")));
 
 			StepVerifier.create(manager().authenticate("disabled-app", timestamp, nonce,
-							bodyDigest, signature, "POST", "/api/data", null, body))
+							bodyDigest, "any-sig", "POST", "/api/data", null, body))
 					.verifyErrorSatisfies(e -> {
 						assertThat(e)
 								.isInstanceOf(JwtAuthenticationException.class)
-								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.INVALID_SIGNATURE);
+								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.APP_DISABLED);
 					});
 		}
 	}
