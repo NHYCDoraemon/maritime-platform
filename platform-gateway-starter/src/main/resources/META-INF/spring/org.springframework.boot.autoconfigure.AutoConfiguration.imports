@@ -1,1 +1,2 @@
 com.maritime.platform.gateway.autoconfigure.GatewayAutoConfiguration
+com.maritime.platform.gateway.autoconfigure.GatewayRedisConfiguration

@@ -11,4 +11,7 @@ public final class GatewayAuthErrorCode {
 	public static final String MISSING_TOKEN = "MISSING_TOKEN";
 	public static final String INVALID_TOKEN = "INVALID_TOKEN";
 	public static final String TOKEN_EXPIRED = "TOKEN_EXPIRED";
+	public static final String SESSION_EXPIRED = "SESSION_EXPIRED";
+	public static final String TOKEN_BLACKLISTED = "TOKEN_BLACKLISTED";
+	public static final String USER_DISABLED = "USER_DISABLED";
 }

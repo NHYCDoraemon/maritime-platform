@@ -8,6 +8,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import javax.crypto.SecretKey;
@@ -19,9 +21,12 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @DisplayName("JwtAuthenticationManager tests")
 class JwtAuthenticationManagerTest {
@@ -521,5 +526,158 @@ class JwtAuthenticationManagerTest {
 		}
 
 		// Dummy import-to-declare for assertThatThrownBy
+	}
+
+	// ---------- state validation integration ----------
+
+	@Nested
+	@DisplayName("State validation integration")
+	class StateValidationIntegration {
+
+		@Test
+		@DisplayName("passes when state validator approves")
+		void passesWhenStateValidatorApproves() {
+			Instant now = Instant.now();
+			String jti = UUID.randomUUID().toString();
+			String token = Jwts.builder()
+					.issuer(ISSUER)
+					.id(jti)
+					.claim("userId", "user-123")
+					.claim("sessionId", "session-abc")
+					.issuedAt(Date.from(now))
+					.expiration(Date.from(now.plus(1, ChronoUnit.HOURS)))
+					.signWith(signingKey)
+					.compact();
+
+			JwtStateValidator stateValidator = Mockito.mock(JwtStateValidator.class);
+			when(stateValidator.validate(any(), any(), any())).thenReturn(Mono.empty());
+
+			JwtAuthenticationManager mgr = new JwtAuthenticationManager(
+					properties, claimsMapper(), Clock.systemUTC(), stateValidator);
+
+			StepVerifier.create(mgr.authenticate(token))
+					.assertNext(user -> assertThat(user.userId()).isEqualTo("user-123"))
+					.verifyComplete();
+		}
+
+		@Test
+		@DisplayName("fails with SESSION_EXPIRED when session check fails")
+		void failsWithSessionExpiredWhenSessionCheckFails() {
+			Instant now = Instant.now();
+			String jti = UUID.randomUUID().toString();
+			String token = Jwts.builder()
+					.issuer(ISSUER)
+					.id(jti)
+					.claim("userId", "user-123")
+					.claim("sessionId", "session-abc")
+					.issuedAt(Date.from(now))
+					.expiration(Date.from(now.plus(1, ChronoUnit.HOURS)))
+					.signWith(signingKey)
+					.compact();
+
+			JwtStateValidator stateValidator = Mockito.mock(JwtStateValidator.class);
+			when(stateValidator.validate(any(), any(), any()))
+					.thenReturn(Mono.error(new JwtAuthenticationException(
+							GatewayAuthErrorCode.SESSION_EXPIRED, "Session expired")));
+
+			JwtAuthenticationManager mgr = new JwtAuthenticationManager(
+					properties, claimsMapper(), Clock.systemUTC(), stateValidator);
+
+			StepVerifier.create(mgr.authenticate(token))
+					.verifyErrorSatisfies(e -> {
+						assertThat(e)
+								.isInstanceOf(JwtAuthenticationException.class)
+								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.SESSION_EXPIRED);
+					});
+		}
+
+		@Test
+		@DisplayName("fails with TOKEN_BLACKLISTED when blacklist check fails")
+		void failsWithTokenBlacklistedWhenBlacklistCheckFails() {
+			Instant now = Instant.now();
+			String jti = UUID.randomUUID().toString();
+			String token = Jwts.builder()
+					.issuer(ISSUER)
+					.id(jti)
+					.claim("userId", "user-123")
+					.claim("sessionId", "session-abc")
+					.issuedAt(Date.from(now))
+					.expiration(Date.from(now.plus(1, ChronoUnit.HOURS)))
+					.signWith(signingKey)
+					.compact();
+
+			JwtStateValidator stateValidator = Mockito.mock(JwtStateValidator.class);
+			when(stateValidator.validate(any(), any(), any()))
+					.thenReturn(Mono.error(new JwtAuthenticationException(
+							GatewayAuthErrorCode.TOKEN_BLACKLISTED, "Token blacklisted")));
+
+			JwtAuthenticationManager mgr = new JwtAuthenticationManager(
+					properties, claimsMapper(), Clock.systemUTC(), stateValidator);
+
+			StepVerifier.create(mgr.authenticate(token))
+					.verifyErrorSatisfies(e -> {
+						assertThat(e)
+								.isInstanceOf(JwtAuthenticationException.class)
+								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.TOKEN_BLACKLISTED);
+					});
+		}
+
+		@Test
+		@DisplayName("fails with USER_DISABLED when user enabled check fails")
+		void failsWithUserDisabledWhenUserEnabledCheckFails() {
+			Instant now = Instant.now();
+			String jti = UUID.randomUUID().toString();
+			String token = Jwts.builder()
+					.issuer(ISSUER)
+					.id(jti)
+					.claim("userId", "user-123")
+					.claim("sessionId", "session-abc")
+					.issuedAt(Date.from(now))
+					.expiration(Date.from(now.plus(1, ChronoUnit.HOURS)))
+					.signWith(signingKey)
+					.compact();
+
+			JwtStateValidator stateValidator = Mockito.mock(JwtStateValidator.class);
+			when(stateValidator.validate(any(), any(), any()))
+					.thenReturn(Mono.error(new JwtAuthenticationException(
+							GatewayAuthErrorCode.USER_DISABLED, "User disabled")));
+
+			JwtAuthenticationManager mgr = new JwtAuthenticationManager(
+					properties, claimsMapper(), Clock.systemUTC(), stateValidator);
+
+			StepVerifier.create(mgr.authenticate(token))
+					.verifyErrorSatisfies(e -> {
+						assertThat(e)
+								.isInstanceOf(JwtAuthenticationException.class)
+								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.USER_DISABLED);
+					});
+		}
+
+		@Test
+		@DisplayName("passes jti from JWT claims to state validator")
+		void passesJtiToValidator() {
+			Instant now = Instant.now();
+			String jti = UUID.randomUUID().toString();
+			String token = Jwts.builder()
+					.issuer(ISSUER)
+					.id(jti)
+					.claim("userId", "user-123")
+					.claim("sessionId", "session-abc")
+					.issuedAt(Date.from(now))
+					.expiration(Date.from(now.plus(1, ChronoUnit.HOURS)))
+					.signWith(signingKey)
+					.compact();
+
+			JwtStateValidator stateValidator = Mockito.mock(JwtStateValidator.class);
+			when(stateValidator.validate("session-abc", jti, "user-123"))
+					.thenReturn(Mono.empty());
+
+			JwtAuthenticationManager mgr = new JwtAuthenticationManager(
+					properties, claimsMapper(), Clock.systemUTC(), stateValidator);
+
+			StepVerifier.create(mgr.authenticate(token))
+					.assertNext(user -> assertThat(user.userId()).isEqualTo("user-123"))
+					.verifyComplete();
+		}
 	}
 }

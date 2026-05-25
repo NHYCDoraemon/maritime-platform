@@ -22,8 +22,10 @@ import java.util.Date;
  * Extracts, decrypts, verifies and maps JWT tokens to
  * {@link GatewayPrincipal.User} instances.
  *
- * <p>All operations run via {@link Mono#fromCallable}, keeping
- * the non-blocking gateway event loop free.
+ * <p>All CPU-bound operations run via {@link Mono#fromCallable},
+ * keeping the non-blocking gateway event loop free. State validation
+ * (session, blacklist, user-enabled) is delegated to
+ * {@link JwtStateValidator} and runs reactively.
  */
 @Component
 @ConditionalOnProperty("maritime.gateway.security.jwt.enabled")
@@ -34,17 +36,29 @@ public class JwtAuthenticationManager {
 	private final JwtEncryptor encryptor;
 	private final JwtClaimsMapper claimsMapper;
 	private final Clock clock;
+	private final JwtStateValidator stateValidator;
 
 	public JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper) {
-		this(properties, claimsMapper, Clock.systemUTC());
+		this(properties, claimsMapper, Clock.systemUTC(), null);
+	}
+
+	public JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper,
+			JwtStateValidator stateValidator) {
+		this(properties, claimsMapper, Clock.systemUTC(), stateValidator);
 	}
 
 	JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper, Clock clock) {
+		this(properties, claimsMapper, clock, null);
+	}
+
+	JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper, Clock clock,
+			JwtStateValidator stateValidator) {
 		this.jwtConfig = properties.getJwt();
 		this.signingKey = Keys.hmacShaKeyFor(jwtConfig.getSecret().getBytes(StandardCharsets.UTF_8));
 		this.encryptor = jwtConfig.isEncrypted() ? new JwtEncryptor(jwtConfig.getSecret()) : null;
 		this.claimsMapper = claimsMapper;
 		this.clock = clock;
+		this.stateValidator = stateValidator;
 	}
 
 	/**
@@ -52,15 +66,23 @@ public class JwtAuthenticationManager {
 	 * or an error signal carrying a {@link JwtAuthenticationException}.
 	 */
 	public Mono<GatewayPrincipal.User> authenticate(String token) {
-		return Mono.fromCallable(() -> doAuthenticate(token));
+		return Mono.fromCallable(() -> doParseAndMap(token))
+				.flatMap(result -> {
+					if (stateValidator == null) {
+						return Mono.just(result.user);
+					}
+					return stateValidator.validate(result.user.sessionId(), result.jti, result.user.userId())
+							.thenReturn(result.user);
+				});
 	}
 
-	private GatewayPrincipal.User doAuthenticate(String token) {
+	private AuthResult doParseAndMap(String token) {
 		String rawToken = decryptIfNeeded(token);
 		Claims claims = parseAndValidate(rawToken);
 		GatewayPrincipal.User user = claimsMapper.map(claims);
 		validateRequiredClaims(user);
-		return user;
+		String jti = claims.getId();
+		return new AuthResult(user, jti);
 	}
 
 	private String decryptIfNeeded(String token) {
@@ -120,6 +142,20 @@ public class JwtAuthenticationManager {
 		if (!StringUtils.hasText(user.sessionId())) {
 			throw new JwtAuthenticationException(GatewayAuthErrorCode.INVALID_TOKEN,
 					"Required claim '" + jwtConfig.getClaims().getSessionId() + "' is missing or empty");
+		}
+	}
+
+	/**
+	 * Intermediate result holding the mapped user and the JWT ID for
+	 * downstream state validation.
+	 */
+	private static class AuthResult {
+		final GatewayPrincipal.User user;
+		final String jti;
+
+		AuthResult(GatewayPrincipal.User user, String jti) {
+			this.user = user;
+			this.jti = jti;
 		}
 	}
 }
