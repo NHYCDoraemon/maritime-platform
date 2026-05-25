@@ -123,7 +123,7 @@ jwt:
 | Header | 说明 |
 |--------|------|
 | `X-App-Key` | 应用标识 |
-| `X-Timestamp` | Unix 时间戳（秒），允许偏差默认 5 分钟 |
+| `X-Timestamp` | Unix 时间戳（毫秒），允许偏差默认 5 分钟 |
 | `X-Nonce` | 随机字符串，最短 16 字符，防重放 |
 | `X-Body-Digest` | 请求体 SHA-256 hex |
 | `X-Signature` | HMAC-SHA256 签名 |

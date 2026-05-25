@@ -161,7 +161,54 @@ class HmacAuthenticationManagerTest {
 		}
 	}
 
-	// ---------- timestamp validation ----------
+	// ---------- timestamp validation: millis vs seconds contract ----------
+
+	@Test
+	@DisplayName("epoch millis timestamp is accepted")
+	void epochMillisTimestampAccepted() {
+		// Current time in millis is the documented and implemented contract
+		String timestamp = String.valueOf(System.currentTimeMillis());
+		String nonce = "nonce-0123456789abcdef";
+		byte[] body = new byte[0];
+		String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
+		String signature = sign(timestamp, nonce, body);
+
+		HmacAuthenticationManager realTimeManager = new HmacAuthenticationManager(
+				properties, canonicalBuilder, nonceValidator, credentialResolver,
+				Clock.systemUTC());
+
+		stubNonceOk(APP_KEY, nonce);
+		stubCredentialOk();
+
+		StepVerifier.create(realTimeManager.authenticate(APP_KEY, timestamp, nonce,
+						bodyDigest, signature, "POST", "/api/data", null, body))
+				.expectNextCount(1)
+				.verifyComplete();
+	}
+
+	@Test
+	@DisplayName("epoch seconds timestamp is rejected with TIMESTAMP_EXPIRED")
+	void epochSecondsTimestampRejected() {
+		// epoch seconds (e.g. 1700000000) is ~50 years behind epoch millis,
+		// so it falls far outside any reasonable tolerance window
+		String timestampSeconds = String.valueOf(System.currentTimeMillis() / 1000);
+		String nonce = "nonce-0123456789abcdef";
+		byte[] body = new byte[0];
+		String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
+		String signature = sign(timestampSeconds, nonce, body);
+
+		HmacAuthenticationManager realTimeManager = new HmacAuthenticationManager(
+				properties, canonicalBuilder, nonceValidator, credentialResolver,
+				Clock.systemUTC());
+
+		StepVerifier.create(realTimeManager.authenticate(APP_KEY, timestampSeconds, nonce,
+						bodyDigest, signature, "POST", "/api/data", null, body))
+				.verifyErrorSatisfies(e -> {
+					assertThat(e)
+							.isInstanceOf(JwtAuthenticationException.class)
+							.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.TIMESTAMP_EXPIRED);
+				});
+	}
 
 	@Nested
 	@DisplayName("Timestamp validation")
