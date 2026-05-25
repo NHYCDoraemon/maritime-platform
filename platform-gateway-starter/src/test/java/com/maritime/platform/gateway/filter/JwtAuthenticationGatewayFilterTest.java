@@ -1,5 +1,7 @@
 package com.maritime.platform.gateway.filter;
 
+import com.maritime.platform.gateway.error.DefaultGatewayErrorWriter;
+import com.maritime.platform.gateway.error.GatewayErrorWriter;
 import com.maritime.platform.gateway.security.AuthMode;
 import com.maritime.platform.gateway.security.GatewayPrincipal;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
@@ -52,10 +54,12 @@ class JwtAuthenticationGatewayFilterTest {
 		signingKey = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
 	}
 
+	private final GatewayErrorWriter errorWriter = new DefaultGatewayErrorWriter();
+
 	private JwtAuthenticationGatewayFilter filter() {
 		JwtAuthenticationManager manager = new JwtAuthenticationManager(properties,
 				new DefaultJwtClaimsMapper(properties));
-		return new JwtAuthenticationGatewayFilter(manager);
+		return new JwtAuthenticationGatewayFilter(manager, errorWriter);
 	}
 
 	private String createValidToken() {

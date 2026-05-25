@@ -1,5 +1,6 @@
 package com.maritime.platform.gateway.filter;
 
+import com.maritime.platform.gateway.error.GatewayErrorWriter;
 import com.maritime.platform.gateway.security.AuthMode;
 import com.maritime.platform.gateway.security.GatewayPrincipal;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
@@ -13,14 +14,10 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
-
-import java.nio.charset.StandardCharsets;
 
 /**
  * Enforces JWT nonce validation for write requests on JWT-protected routes.
@@ -37,11 +34,13 @@ public class JwtNonceGatewayFilter implements GlobalFilter, Ordered {
 
 	private final JwtNonceValidator nonceValidator;
 	private final GatewaySecurityProperties properties;
+	private final GatewayErrorWriter errorWriter;
 
 	public JwtNonceGatewayFilter(JwtNonceValidator nonceValidator,
-			GatewaySecurityProperties properties) {
+			GatewaySecurityProperties properties, GatewayErrorWriter errorWriter) {
 		this.nonceValidator = nonceValidator;
 		this.properties = properties;
+		this.errorWriter = errorWriter;
 	}
 
 	@Override
@@ -67,14 +66,13 @@ public class JwtNonceGatewayFilter implements GlobalFilter, Ordered {
 
 		String nonce = exchange.getRequest().getHeaders().getFirst("X-Nonce");
 		if (nonce == null || nonce.isEmpty()) {
-			return writeError(exchange, GatewayAuthErrorCode.NONCE_REQUIRED,
-					"X-Nonce header is required for " + method + " requests");
+			return errorWriter.write(exchange, GatewayAuthErrorCode.NONCE_REQUIRED);
 		}
 
 		return nonceValidator.validate(principal.sessionId(), nonce)
 				.then(chain.filter(exchange))
 				.onErrorResume(JwtAuthenticationException.class,
-						e -> writeError(exchange, e.getErrorCode(), e.getMessage()));
+						e -> errorWriter.write(exchange, e.getErrorCode()));
 	}
 
 	@Override
@@ -88,26 +86,5 @@ public class JwtNonceGatewayFilter implements GlobalFilter, Ordered {
 		}
 		AuthMode mode = policy.getAuthMode();
 		return mode == AuthMode.JWT || mode == AuthMode.JWT_OR_HMAC || mode == AuthMode.JWT_AND_HMAC;
-	}
-
-	private Mono<Void> writeError(ServerWebExchange exchange, String code, String message) {
-		exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-		exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-		String body = String.format("{\"code\":\"%s\",\"message\":\"%s\"}",
-				escapeJson(code), escapeJson(message));
-		byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-		return exchange.getResponse()
-				.writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(bytes)));
-	}
-
-	private static String escapeJson(String s) {
-		if (s == null) {
-			return "";
-		}
-		return s.replace("\\", "\\\\")
-				.replace("\"", "\\\"")
-				.replace("\n", "\\n")
-				.replace("\r", "\\r")
-				.replace("\t", "\\t");
 	}
 }

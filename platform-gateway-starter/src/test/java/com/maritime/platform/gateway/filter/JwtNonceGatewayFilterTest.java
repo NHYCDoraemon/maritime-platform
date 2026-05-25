@@ -1,5 +1,7 @@
 package com.maritime.platform.gateway.filter;
 
+import com.maritime.platform.gateway.error.DefaultGatewayErrorWriter;
+import com.maritime.platform.gateway.error.GatewayErrorWriter;
 import com.maritime.platform.gateway.security.AuthMode;
 import com.maritime.platform.gateway.security.GatewayPrincipal;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
@@ -54,8 +56,10 @@ class JwtNonceGatewayFilterTest {
 		properties.getJwt().setIssuer("maritime-platform");
 	}
 
+	private final GatewayErrorWriter errorWriter = new DefaultGatewayErrorWriter();
+
 	private JwtNonceGatewayFilter filter() {
-		return new JwtNonceGatewayFilter(nonceValidator, properties);
+		return new JwtNonceGatewayFilter(nonceValidator, properties, errorWriter);
 	}
 
 	private static GatewayFilterChain capturingChain(AtomicReference<ServerWebExchange> ref) {
@@ -124,7 +128,6 @@ class JwtNonceGatewayFilterTest {
 			assertThat(response.getStatusCode().value()).isEqualTo(401);
 			String body = response.getBodyAsString().block();
 			assertThat(body).contains(GatewayAuthErrorCode.NONCE_REQUIRED);
-			assertThat(body).contains("X-Nonce");
 		}
 
 		@Test

@@ -1,5 +1,7 @@
 package com.maritime.platform.gateway.filter;
 
+import com.maritime.platform.gateway.error.DefaultGatewayErrorWriter;
+import com.maritime.platform.gateway.error.GatewayErrorWriter;
 import com.maritime.platform.gateway.security.AuthMode;
 import com.maritime.platform.gateway.security.GatewayPrincipal;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
@@ -69,8 +71,10 @@ class HmacAuthenticationGatewayFilterTest {
 		properties.getHmac().setEnabled(true);
 	}
 
+	private final GatewayErrorWriter errorWriter = new DefaultGatewayErrorWriter();
+
 	private HmacAuthenticationGatewayFilter filter() {
-		return new HmacAuthenticationGatewayFilter(authManager, properties);
+		return new HmacAuthenticationGatewayFilter(authManager, properties, errorWriter);
 	}
 
 	private static GatewayFilterChain capturingChain(AtomicReference<ServerWebExchange> ref) {

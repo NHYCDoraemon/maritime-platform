@@ -1,5 +1,6 @@
 package com.maritime.platform.gateway.filter;
 
+import com.maritime.platform.gateway.error.GatewayErrorWriter;
 import com.maritime.platform.gateway.security.AuthMode;
 import com.maritime.platform.gateway.security.GatewayPrincipal;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
@@ -15,8 +16,6 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
 import org.springframework.stereotype.Component;
@@ -24,8 +23,6 @@ import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
-import java.nio.charset.StandardCharsets;
 
 /**
  * Authenticates system-to-system requests using HMAC-SHA256 signatures.
@@ -41,11 +38,13 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 
 	private final HmacAuthenticationManager authManager;
 	private final GatewaySecurityProperties properties;
+	private final GatewayErrorWriter errorWriter;
 
 	public HmacAuthenticationGatewayFilter(HmacAuthenticationManager authManager,
-			GatewaySecurityProperties properties) {
+			GatewaySecurityProperties properties, GatewayErrorWriter errorWriter) {
 		this.authManager = authManager;
 		this.properties = properties;
+		this.errorWriter = errorWriter;
 	}
 
 	@Override
@@ -63,11 +62,7 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 		String signature = exchange.getRequest().getHeaders().getFirst(hdrs.getSignature());
 
 		if (isAnyBlank(appKey, timestamp, nonce, bodyDigest, signature)) {
-			return writeError(exchange, GatewayAuthErrorCode.MISSING_HMAC_HEADERS,
-					"Missing one or more HMAC headers: " +
-							hdrs.getAppKey() + ", " + hdrs.getTimestamp() + ", " +
-							hdrs.getNonce() + ", " + hdrs.getBodyDigest() + ", " +
-							hdrs.getSignature());
+			return errorWriter.write(exchange, GatewayAuthErrorCode.MISSING_HMAC_HEADERS);
 		}
 
 		return readAndCacheBody(exchange)
@@ -84,7 +79,7 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 								return chain.filter(cachedExchange);
 							})
 							.onErrorResume(JwtAuthenticationException.class,
-									e -> writeError(cachedExchange, e.getErrorCode(), e.getMessage()));
+									e -> errorWriter.write(cachedExchange, e.getErrorCode()));
 				});
 	}
 
@@ -137,24 +132,4 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 		return false;
 	}
 
-	private Mono<Void> writeError(ServerWebExchange exchange, String code, String message) {
-		exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-		exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-		String body = String.format("{\"code\":\"%s\",\"message\":\"%s\"}",
-				escapeJson(code), escapeJson(message));
-		byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-		return exchange.getResponse()
-				.writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(bytes)));
-	}
-
-	private static String escapeJson(String s) {
-		if (s == null) {
-			return "";
-		}
-		return s.replace("\\", "\\\\")
-				.replace("\"", "\\\"")
-				.replace("\n", "\\n")
-				.replace("\r", "\\r")
-				.replace("\t", "\\t");
-	}
 }

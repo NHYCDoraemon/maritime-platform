@@ -21,4 +21,5 @@ public final class GatewayAuthErrorCode {
 	public static final String INVALID_SIGNATURE = "INVALID_SIGNATURE";
 	public static final String UNKNOWN_APP = "UNKNOWN_APP";
 	public static final String APP_DISABLED = "APP_DISABLED";
+	public static final String FORBIDDEN = "FORBIDDEN";
 }
