@@ -352,6 +352,20 @@ class RouteSecurityPolicyResolverTest {
 			});
 			resolveWithCustomizers(props, "/other", "GET", customizers);
 		}
+
+		@Test
+		@DisplayName("addRoutePolicy with null authMode throws IllegalArgumentException")
+		void addRoutePolicyRejectsNullAuthMode() {
+			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.JWT);
+			List<GatewaySecurityPolicyCustomizer> customizers = List.of(resolver -> {
+				assertThatThrownBy(() -> resolver.addRoutePolicy("null-mode",
+						List.of("/null/**"), null, null))
+						.isInstanceOf(IllegalArgumentException.class)
+						.hasMessageContaining("null-mode")
+						.hasMessageContaining("must not be null");
+			});
+			resolveWithCustomizers(props, "/other", "GET", customizers);
+		}
 	}
 
 	// ---------- RouteSecurityPolicy value object ----------

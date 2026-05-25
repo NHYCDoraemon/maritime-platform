@@ -452,6 +452,44 @@ class GatewaySecurityPropertiesTest {
         }
 
         @Test
+        @DisplayName("route policy with null authMode causes startup failure")
+        void routePolicyWithNullAuthModeFails() {
+            var props = new GatewaySecurityProperties();
+            var route = new GatewaySecurityProperties.RoutePolicy();
+            route.setId("missing-auth-mode");
+            route.setPaths(java.util.List.of("/api/**"));
+            // authMode intentionally left null
+            props.getRoutes().add(route);
+
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("missing-auth-mode")
+                    .hasMessageContaining("auth-mode");
+        }
+
+        @Test
+        @DisplayName("multiple routes with one null authMode fails with specific route id")
+        void multipleRoutesOneNullAuthModeFails() {
+            var props = new GatewaySecurityProperties();
+            var r1 = new GatewaySecurityProperties.RoutePolicy();
+            r1.setId("valid-route");
+            r1.setPaths(java.util.List.of("/api/v1/**"));
+            r1.setAuthMode(AuthMode.JWT);
+            props.getRoutes().add(r1);
+
+            var r2 = new GatewaySecurityProperties.RoutePolicy();
+            r2.setId("broken-route");
+            r2.setPaths(java.util.List.of("/api/v2/**"));
+            // authMode intentionally left null
+            props.getRoutes().add(r2);
+
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("broken-route")
+                    .hasMessageContaining("auth-mode");
+        }
+
+        @Test
         @DisplayName("HMAC disabled passes validation regardless of other fields")
         void hmacDisabledPassesValidation() {
             var props = new GatewaySecurityProperties();
@@ -543,6 +581,19 @@ class GatewaySecurityPropertiesTest {
             var violations = validator.validate(app);
             assertThat(violations).isNotEmpty();
             assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().contains("appCode"));
+        }
+
+        @Test
+        @DisplayName("RoutePolicy without authMode fails @NotNull")
+        void routePolicyWithoutAuthModeFails() {
+            var route = new GatewaySecurityProperties.RoutePolicy();
+            route.setId("missing-mode");
+            route.setPaths(java.util.List.of("/api/**"));
+            // authMode left null
+
+            var violations = validator.validate(route);
+            assertThat(violations).isNotEmpty();
+            assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().contains("authMode"));
         }
 
         @Test
