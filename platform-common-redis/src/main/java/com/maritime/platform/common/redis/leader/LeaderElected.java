@@ -14,12 +14,12 @@ import java.lang.annotation.Target;
  * <p>Sample:</p>
  * <pre>{@code
  * @Scheduled(fixedDelay = 30_000)
- * @LeaderElected(name = "countersign-completion-scan")
- * public void scan() { ... }
+ * @LeaderElected(name = "periodic-maintenance")
+ * public void runMaintenance() { ... }
  * }</pre>
  *
  * <p>Backed by {@code LockPort}; lock key is {@code "leader:<name>"} under the
- * lock namespace (default {@code pe:lock:leader:<name>}).</p>
+ * lock namespace (default {@code platform:lock:leader:<name>}).</p>
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

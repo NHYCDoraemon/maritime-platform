@@ -3,3 +3,4 @@ com.maritime.platform.common.redis.lock.DistributedLockAutoConfiguration
 com.maritime.platform.common.redis.idempotency.IdempotencyAutoConfiguration
 com.maritime.platform.common.redis.lockport.LockPortAutoConfiguration
 com.maritime.platform.common.redis.leader.LeaderElectedAutoConfiguration
+com.maritime.platform.common.redis.resilience.ResilienceAutoConfiguration

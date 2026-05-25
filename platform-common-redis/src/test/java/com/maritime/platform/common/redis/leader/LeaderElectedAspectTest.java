@@ -63,7 +63,7 @@ class LeaderElectedAspectTest {
 
     private LockHandle fakeHandle() {
         return new LockHandle() {
-            @Override public String lockKey() { return "pe:lock:leader:x"; }
+            @Override public String lockKey() { return "platform:lock:leader:x"; }
             @Override public void unlock() { }
             @Override public void close() { }
         };

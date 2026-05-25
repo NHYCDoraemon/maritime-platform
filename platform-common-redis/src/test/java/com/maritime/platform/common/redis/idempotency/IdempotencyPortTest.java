@@ -51,7 +51,7 @@ class IdempotencyPortTest {
         om.registerModule(new JavaTimeModule());
         om.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-        port = new RedisIdempotencyPort(redisTemplate, om, "pe:idem");
+        port = new RedisIdempotencyPort(redisTemplate, om, "platform:idem");
     }
 
     @BeforeEach
@@ -130,6 +130,66 @@ class IdempotencyPortTest {
                 .contains("A");
         assertThat(port.findResult("tenantB", "key-X").map(IdempotencyResult::resultJson))
                 .contains("B");
+    }
+
+    @Test
+    void beginProcessing_firstClaimStarts_secondClaimIsInProgress() {
+        IdempotencyPort.BeginProcessingResult first =
+                port.beginProcessing("t1", "key-claim", "OP", Duration.ofMinutes(1));
+        IdempotencyPort.BeginProcessingResult second =
+                port.beginProcessing("t1", "key-claim", "OP", Duration.ofMinutes(1));
+
+        assertThat(first.status()).isEqualTo(IdempotencyPort.BeginProcessingStatus.STARTED);
+        assertThat(second.status()).isEqualTo(IdempotencyPort.BeginProcessingStatus.IN_PROGRESS);
+        assertThat(second.result()).isEmpty();
+        assertThat(second.failure()).isEmpty();
+    }
+
+    @Test
+    void completeProcessing_afterClaim_replaysSuccessfulResult() {
+        Instant now = Instant.parse("2026-01-01T00:00:00Z");
+
+        port.beginProcessing("t1", "key-complete", "OP", Duration.ofMinutes(1));
+        port.completeProcessing(new IdempotencyRecord(
+                "t1", "key-complete", "{\"ok\":true}", now, "OP"), Duration.ofMinutes(5));
+
+        IdempotencyPort.BeginProcessingResult replay =
+                port.beginProcessing("t1", "key-complete", "OP", Duration.ofMinutes(1));
+
+        assertThat(replay.status()).isEqualTo(IdempotencyPort.BeginProcessingStatus.REPLAY);
+        assertThat(replay.result()).isPresent();
+        assertThat(replay.result().get().resultJson()).isEqualTo("{\"ok\":true}");
+        assertThat(replay.result().get().executedAt()).isEqualTo(now);
+        assertThat(replay.result().get().operationType()).isEqualTo("OP");
+    }
+
+    @Test
+    void beginProcessing_existingDifferentOperation_returnsConflict() {
+        port.beginProcessing("t1", "key-conflict", "OP_A", Duration.ofMinutes(1));
+
+        IdempotencyPort.BeginProcessingResult conflict =
+                port.beginProcessing("t1", "key-conflict", "OP_B", Duration.ofMinutes(1));
+
+        assertThat(conflict.status()).isEqualTo(IdempotencyPort.BeginProcessingStatus.CONFLICT);
+        assertThat(conflict.result()).isEmpty();
+    }
+
+    @Test
+    void failProcessing_afterClaim_returnsFailedStateWithFailureDetails() {
+        port.beginProcessing("t1", "key-failed", "OP", Duration.ofMinutes(1));
+
+        port.failProcessing("t1", "key-failed", "OP", "ERR_UPSTREAM", "Upstream failed",
+                Duration.ofMinutes(1));
+
+        IdempotencyPort.BeginProcessingResult failed =
+                port.beginProcessing("t1", "key-failed", "OP", Duration.ofMinutes(1));
+
+        assertThat(failed.status()).isEqualTo(IdempotencyPort.BeginProcessingStatus.FAILED);
+        assertThat(failed.result()).isEmpty();
+        assertThat(failed.failure()).isPresent();
+        assertThat(failed.failure().get().errorCode()).isEqualTo("ERR_UPSTREAM");
+        assertThat(failed.failure().get().message()).isEqualTo("Upstream failed");
+        assertThat(port.findResult("t1", "key-failed")).isEmpty();
     }
 
     @Test

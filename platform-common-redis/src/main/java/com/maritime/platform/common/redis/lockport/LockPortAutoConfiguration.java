@@ -1,9 +1,11 @@
 package com.maritime.platform.common.redis.lockport;
 
+import com.maritime.platform.common.redis.config.RedisCommonProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
@@ -14,11 +16,12 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 @AutoConfiguration
 @ConditionalOnClass(StringRedisTemplate.class)
 @ConditionalOnBean(StringRedisTemplate.class)
+@EnableConfigurationProperties(RedisCommonProperties.class)
 public class LockPortAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public LockPort lockPort(StringRedisTemplate redis) {
-        return new RedisLockPort(redis, "pe:lock");
+    public LockPort lockPort(StringRedisTemplate redis, RedisCommonProperties properties) {
+        return new RedisLockPort(redis, properties.getLockKeyPrefix());
     }
 }

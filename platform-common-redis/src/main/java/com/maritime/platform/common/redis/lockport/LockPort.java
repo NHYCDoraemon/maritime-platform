@@ -7,11 +7,11 @@ import java.util.Optional;
  * Programmatic distributed lock API (alternative to {@code @DistributedLock} annotation).
  *
  * <p>Lock key format: {@code <keyPrefix>:<aggregate>:<resourceId>} (prefix configurable
- * per {@code LockPort} bean, default {@code "pe:lock"}). TTL &le; 30s recommended.
+ * per {@code LockPort} bean, default {@code "platform:lock"}). TTL &le; 30s recommended.
  * Use try-with-resources for release:</p>
  * <pre>{@code
- * Optional<LockHandle> h = lockPort.tryLock("user", userId, Duration.ofSeconds(3), Duration.ofSeconds(10));
- * if (h.isEmpty()) throw new ConcurrentOperationException();
+ * Optional<LockHandle> h = lockPort.tryLock("resource", resourceId, Duration.ofSeconds(3), Duration.ofSeconds(10));
+ * if (h.isEmpty()) return;
  * try (LockHandle ignored = h.get()) {
  *     // critical section
  * }
