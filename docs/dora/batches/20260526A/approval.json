@@ -1,0 +1,33 @@
+{
+  "approval_version": 1,
+  "approved_at": "2026-05-26T00:16:22+08:00",
+  "approved_batch_hash": "sha256:6577ae6082027c87bb30e883f6a0ea7bb96bee0afebea52982ff8fc7d8e9efa2",
+  "approved_by": "raymond",
+  "approved_plane_creates": {
+    "cycles": [
+      "Gateway Starter Audit Hardening"
+    ],
+    "pages": [
+      "Program Page",
+      "Batch Page"
+    ],
+    "root_epic_issue": true,
+    "task_issues": 6
+  },
+  "approved_task_ids": [
+    "MP-GWSTARTER-20260526A-T01",
+    "MP-GWSTARTER-20260526A-T02",
+    "MP-GWSTARTER-20260526A-T03",
+    "MP-GWSTARTER-20260526A-T04",
+    "MP-GWSTARTER-20260526A-T05",
+    "MP-GWSTARTER-20260526A-T06"
+  ],
+  "batch_id": "20260526A",
+  "policy": {
+    "allow_create_cycles": true,
+    "allow_create_root_epic": true,
+    "allow_create_task_issues": true,
+    "allow_update_existing_submitted_issues": false
+  },
+  "program_id": "platform-gateway-starter-audit-hardening"
+}
