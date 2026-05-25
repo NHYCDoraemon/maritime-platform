@@ -263,6 +263,44 @@ class GatewayFilterChainTest {
 		}
 
 		@Test
+		@DisplayName("HMAC signature header X-App-Key is preserved for downstream HMAC auth")
+		void preservesHmacAppKeyHeader() {
+			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter();
+			MockServerHttpRequest request = MockServerHttpRequest.get("/api/data")
+					.header("X-App-Key", "app-001")
+					.header("X-Timestamp", "1700000000000")
+					.header("X-Nonce", "nonce-0123456789abcdef")
+					.header("X-Body-Digest", "sha256-digest")
+					.header("X-Signature", "signature-value")
+					.header("X-App-Code", "forged-app")
+					.header("X-App-Id", "999")
+					.header("X-Verified-App-Code", "forged-verified")
+					.header("X-App-Permissions", "admin")
+					.header("X-Tenant-Id", "fake-tenant")
+					.header("X-Tenant-Code", "HACKED")
+					.build();
+			MockServerWebExchange exchange = MockServerWebExchange.from(request);
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			// HMAC signature headers must survive the strip so HMAC auth can read them
+			assertThat(headers.getFirst("X-App-Key")).isEqualTo("app-001");
+			assertThat(headers.getFirst("X-Timestamp")).isEqualTo("1700000000000");
+			assertThat(headers.getFirst("X-Nonce")).isEqualTo("nonce-0123456789abcdef");
+			assertThat(headers.getFirst("X-Body-Digest")).isEqualTo("sha256-digest");
+			assertThat(headers.getFirst("X-Signature")).isEqualTo("signature-value");
+			// Downstream context headers must still be stripped
+			assertThat(headers.getFirst("X-App-Code")).isNull();
+			assertThat(headers.getFirst("X-App-Id")).isNull();
+			assertThat(headers.getFirst("X-Verified-App-Code")).isNull();
+			assertThat(headers.getFirst("X-App-Permissions")).isNull();
+			assertThat(headers.getFirst("X-Tenant-Id")).isNull();
+			assertThat(headers.getFirst("X-Tenant-Code")).isNull();
+		}
+
+		@Test
 		@DisplayName("all paths are filtered including public")
 		void allPathsAreFiltered() {
 			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter();

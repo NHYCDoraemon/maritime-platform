@@ -23,6 +23,9 @@ import reactor.core.publisher.Mono;
 @Order(GatewayFilterOrder.UNTRUSTED_HEADER_STRIP)
 public class UntrustedHeaderStripFilter implements GlobalFilter, Ordered {
 
+	// Headers that must only be set by the gateway, never trusted from clients.
+	// X-App-Key is intentionally excluded because HMAC auth reads it before the
+	// trusted-context injection phase.
 	static final Set<String> UNTRUSTED_HEADERS = Set.of(
 			"X-Internal-Call",
 			"X-User-Id", "X-User-Name",
@@ -31,7 +34,7 @@ public class UntrustedHeaderStripFilter implements GlobalFilter, Ordered {
 			"X-System-Scope",
 			"X-User-Source",
 			"X-Tenant-Id", "X-Tenant-Code",
-			"X-App-Key", "X-App-Code", "X-App-Id",
+			"X-App-Code", "X-App-Id",
 			"X-Verified-App-Code",
 			"X-App-Permissions",
 			"X-Trace-Id"

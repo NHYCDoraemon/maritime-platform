@@ -23,6 +23,7 @@ import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.http.server.reactive.MockServerHttpResponse;
@@ -505,6 +506,63 @@ class HmacAuthenticationGatewayFilterTest {
 			byte[] cachedBody = captured.get().getAttribute("gateway.cachedBody");
 			assertThat(cachedBody).isNotNull();
 			assertThat(cachedBody).isEmpty();
+		}
+	}
+
+	// ---------- HMAC signature header stripping after auth ----------
+
+	@Nested
+	@DisplayName("HMAC signature header stripping after successful auth")
+	class HmacSignatureHeaderStripping {
+
+		@Test
+		@DisplayName("downstream request does not contain raw HMAC signature headers after auth")
+		void downstreamHasNoRawSignatureHeaders() {
+			MockServerWebExchange exchange = exchange("POST", "/api/data");
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			GatewayPrincipal.App expectedPrincipal = testAppPrincipal();
+			when(authManager.authenticate(any(), any(), any(),
+					any(), any(), any(), any(), any(), any()))
+					.thenReturn(Mono.just(expectedPrincipal));
+
+			StepVerifier.create(filter().filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			HttpHeaders downstreamHeaders = captured.get().getRequest().getHeaders();
+			assertThat(downstreamHeaders.getFirst(APP_KEY_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(TIMESTAMP_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(NONCE_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(BODY_DIGEST_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(SIGNATURE_HEADER)).isNull();
+		}
+
+		@Test
+		@DisplayName("JWT_OR_HMAC: downstream has no raw HMAC signature headers after successful auth")
+		void jwtOrHmacDownstreamHasNoRawHeaders() {
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header(APP_KEY_HEADER, APP_KEY)
+							.header(TIMESTAMP_HEADER, "1700000000000")
+							.header(NONCE_HEADER, "nonce-0123456789abcdef")
+							.header(BODY_DIGEST_HEADER, "digest")
+							.header(SIGNATURE_HEADER, "sig"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_OR_HMAC, "dual-route"));
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			GatewayPrincipal.App expectedPrincipal = testAppPrincipal();
+			when(authManager.authenticate(any(), any(), any(),
+					any(), any(), any(), any(), any(), any()))
+					.thenReturn(Mono.just(expectedPrincipal));
+
+			StepVerifier.create(filter().filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			HttpHeaders downstreamHeaders = captured.get().getRequest().getHeaders();
+			assertThat(downstreamHeaders.getFirst(APP_KEY_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(TIMESTAMP_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(SIGNATURE_HEADER)).isNull();
 		}
 	}
 

@@ -92,7 +92,10 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 									method, rawPath, rawQuery, bodyBytes != null ? bodyBytes : new byte[0])
 							.flatMap(principal -> {
 								cachedExchange.getAttributes().put(GatewayPrincipal.ATTRIBUTE, principal);
-								return chain.filter(cachedExchange);
+								// Strip raw HMAC signature headers before forwarding downstream
+								ServerHttpRequest stripped = stripHmacHeaders(
+										cachedExchange.getRequest(), hdrs, exchange);
+								return chain.filter(cachedExchange.mutate().request(stripped).build());
 							})
 							.onErrorResume(JwtAuthenticationException.class,
 									e -> errorWriter.write(cachedExchange, e.getErrorCode()));
@@ -102,6 +105,29 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 	@Override
 	public int getOrder() {
 		return GatewayFilterOrder.HMAC_AUTHENTICATION;
+	}
+
+	/**
+	 * Removes raw HMAC signature headers from the request before forwarding
+	 * downstream. Preserves any body decorator so the cached body stays readable.
+	 */
+	private ServerHttpRequest stripHmacHeaders(ServerHttpRequest request,
+			GatewaySecurityProperties.Headers hdrs, ServerWebExchange exchange) {
+		ServerHttpRequest headerStripped = request.mutate()
+				.headers(h -> {
+					h.remove(hdrs.getAppKey());
+					h.remove(hdrs.getTimestamp());
+					h.remove(hdrs.getNonce());
+					h.remove(hdrs.getBodyDigest());
+					h.remove(hdrs.getSignature());
+				})
+				.build();
+		return new ServerHttpRequestDecorator(headerStripped) {
+			@Override
+			public Flux<DataBuffer> getBody() {
+				return headerStripped.getBody();
+			}
+		};
 	}
 
 	/**
