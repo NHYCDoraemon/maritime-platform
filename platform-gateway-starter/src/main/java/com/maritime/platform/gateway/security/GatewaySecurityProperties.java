@@ -82,12 +82,16 @@ public class GatewaySecurityProperties implements InitializingBean {
         @NotEmpty
         private List<String> paths = new ArrayList<>();
 
+        private List<String> methods = new ArrayList<>();
+
         private AuthMode authMode;
 
         public String getId() { return id; }
         public void setId(String id) { this.id = id; }
         public List<String> getPaths() { return paths; }
         public void setPaths(List<String> paths) { this.paths = paths; }
+        public List<String> getMethods() { return methods; }
+        public void setMethods(List<String> methods) { this.methods = methods; }
         public AuthMode getAuthMode() { return authMode; }
         public void setAuthMode(AuthMode authMode) { this.authMode = authMode; }
     }
