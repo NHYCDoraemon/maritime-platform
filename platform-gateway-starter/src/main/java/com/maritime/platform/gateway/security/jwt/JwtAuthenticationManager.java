@@ -8,6 +8,7 @@ import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
@@ -38,6 +39,7 @@ public class JwtAuthenticationManager {
 	private final Clock clock;
 	private final JwtStateValidator stateValidator;
 
+	@Autowired
 	public JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper) {
 		this(properties, claimsMapper, Clock.systemUTC(), null);
 	}

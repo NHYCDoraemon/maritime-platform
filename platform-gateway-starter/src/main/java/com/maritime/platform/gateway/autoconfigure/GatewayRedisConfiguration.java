@@ -1,6 +1,7 @@
 package com.maritime.platform.gateway.autoconfigure;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.connection.ReactiveRedisConnectionFactory;
@@ -17,6 +18,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 public class GatewayRedisConfiguration {
 
 	@Bean
+	@ConditionalOnBean(ReactiveRedisConnectionFactory.class)
 	ReactiveRedisTemplate<String, String> reactiveStringRedisTemplate(
 			ReactiveRedisConnectionFactory connectionFactory) {
 		RedisSerializationContext<String, String> context = RedisSerializationContext
