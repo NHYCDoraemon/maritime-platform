@@ -12,8 +12,12 @@ import com.maritime.platform.gateway.security.hmac.DefaultAppCredentialResolver;
 import com.maritime.platform.gateway.security.hmac.HmacNonceValidator;
 import com.maritime.platform.gateway.security.jwt.GatewayAuthErrorCode;
 import com.maritime.platform.gateway.security.jwt.JwtAuthenticationException;
+import com.maritime.platform.gateway.security.jwt.JwtAuthenticationManager;
 import com.maritime.platform.gateway.security.jwt.JwtStateValidator;
 import com.maritime.platform.gateway.security.nonce.JwtNonceValidator;
+
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -32,7 +36,13 @@ import org.testcontainers.utility.DockerImageName;
 
 import reactor.test.StepVerifier;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Date;
 import java.util.Map;
+import java.util.UUID;
+
+import javax.crypto.SecretKey;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -523,6 +533,128 @@ class GatewayStarterIntegrationTest {
                         assertThat(ctx).hasNotFailed();
                         assertThat(ctx).hasSingleBean(GatewaySecurityProperties.class);
                     });
+        }
+    }
+
+    // ---------- JWT auth manager state validation through auto-wired bean ----------
+
+    @Nested
+    @DisplayName("JWT authentication manager state validation (auto-wired)")
+    class JwtAuthManagerStateValidation {
+
+        private static final String SECRET = "test-secret-with-minimum-length-256-bits!!";
+        private static final String ISSUER = "test-issuer";
+
+        private SecretKey signingKey() {
+            return Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
+        }
+
+        private String createToken(String userId, String sessionId, String jti) {
+            Instant now = Instant.now();
+            return Jwts.builder()
+                    .issuer(ISSUER)
+                    .id(jti)
+                    .claim("userId", userId)
+                    .claim("sessionId", sessionId)
+                    .issuedAt(Date.from(now))
+                    .expiration(Date.from(now.plusSeconds(3600)))
+                    .signWith(signingKey())
+                    .compact();
+        }
+
+        @Test
+        @DisplayName("valid token with Redis session succeeds")
+        void validTokenWithSessionSucceeds() {
+            createRunner().run(ctx -> {
+                var manager = ctx.getBean(JwtAuthenticationManager.class);
+                var props = ctx.getBean(GatewaySecurityProperties.class);
+                var redisOps = (ReactiveRedisOperations<String, String>) ctx.getBean(ReactiveRedisOperations.class);
+
+                String sessionId = "auto-session-ok";
+                String sessionKey = props.getJwt().getRedisKeys().getSessionPrefix() + sessionId;
+                redisOps.opsForValue().set(sessionKey, "1").block();
+
+                String token = createToken("user-ok", sessionId, UUID.randomUUID().toString());
+
+                StepVerifier.create(manager.authenticate(token))
+                        .assertNext(user -> {
+                            assertThat(user.userId()).isEqualTo("user-ok");
+                            assertThat(user.sessionId()).isEqualTo(sessionId);
+                        })
+                        .verifyComplete();
+
+                redisOps.delete(sessionKey).block();
+            });
+        }
+
+        @Test
+        @DisplayName("valid token but Redis has no session returns SESSION_EXPIRED")
+        void missingSessionReturnsSessionExpired() {
+            createRunner().run(ctx -> {
+                var manager = ctx.getBean(JwtAuthenticationManager.class);
+
+                String token = createToken("user-nosession", "nonexistent-session-xyz",
+                        UUID.randomUUID().toString());
+
+                StepVerifier.create(manager.authenticate(token))
+                        .verifyErrorSatisfies(e -> assertThat(e)
+                                .isInstanceOf(JwtAuthenticationException.class)
+                                .extracting("errorCode").isEqualTo(GatewayAuthErrorCode.SESSION_EXPIRED));
+            });
+        }
+
+        @Test
+        @DisplayName("blacklisted token returns TOKEN_BLACKLISTED")
+        void blacklistedTokenReturnsTokenBlacklisted() {
+            createRunner().run(ctx -> {
+                var manager = ctx.getBean(JwtAuthenticationManager.class);
+                var props = ctx.getBean(GatewaySecurityProperties.class);
+                var redisOps = (ReactiveRedisOperations<String, String>) ctx.getBean(ReactiveRedisOperations.class);
+
+                String sessionId = "auto-session-bl";
+                String jti = UUID.randomUUID().toString();
+                String sessionKey = props.getJwt().getRedisKeys().getSessionPrefix() + sessionId;
+                String blacklistKey = props.getJwt().getRedisKeys().getBlacklistPrefix() + jti;
+
+                redisOps.opsForValue().set(sessionKey, "1").block();
+                redisOps.opsForValue().set(blacklistKey, "1").block();
+
+                String token = createToken("user-bl", sessionId, jti);
+
+                StepVerifier.create(manager.authenticate(token))
+                        .verifyErrorSatisfies(e -> assertThat(e)
+                                .isInstanceOf(JwtAuthenticationException.class)
+                                .extracting("errorCode").isEqualTo(GatewayAuthErrorCode.TOKEN_BLACKLISTED));
+
+                redisOps.delete(sessionKey, blacklistKey).block();
+            });
+        }
+
+        @Test
+        @DisplayName("disabled user returns USER_DISABLED")
+        void disabledUserReturnsUserDisabled() {
+            createRunner().run(ctx -> {
+                var manager = ctx.getBean(JwtAuthenticationManager.class);
+                var props = ctx.getBean(GatewaySecurityProperties.class);
+                var redisOps = (ReactiveRedisOperations<String, String>) ctx.getBean(ReactiveRedisOperations.class);
+
+                String userId = "user-disabled-001";
+                String sessionId = "auto-session-du";
+                String sessionKey = props.getJwt().getRedisKeys().getSessionPrefix() + sessionId;
+                String userKey = props.getJwt().getRedisKeys().getUserEnabledPrefix() + userId;
+
+                redisOps.opsForValue().set(sessionKey, "1").block();
+                redisOps.opsForValue().set(userKey, "DISABLED").block();
+
+                String token = createToken(userId, sessionId, UUID.randomUUID().toString());
+
+                StepVerifier.create(manager.authenticate(token))
+                        .verifyErrorSatisfies(e -> assertThat(e)
+                                .isInstanceOf(JwtAuthenticationException.class)
+                                .extracting("errorCode").isEqualTo(GatewayAuthErrorCode.USER_DISABLED));
+
+                redisOps.delete(sessionKey, userKey).block();
+            });
         }
     }
 }

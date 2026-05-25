@@ -40,20 +40,16 @@ public class JwtAuthenticationManager {
 	private final JwtStateValidator stateValidator;
 
 	@Autowired
-	public JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper) {
-		this(properties, claimsMapper, Clock.systemUTC(), null);
-	}
-
 	public JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper,
 			JwtStateValidator stateValidator) {
 		this(properties, claimsMapper, Clock.systemUTC(), stateValidator);
 	}
 
-	JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper, Clock clock) {
+	public JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper, Clock clock) {
 		this(properties, claimsMapper, clock, null);
 	}
 
-	JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper, Clock clock,
+	public JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper, Clock clock,
 			JwtStateValidator stateValidator) {
 		this.jwtConfig = properties.getJwt();
 		this.signingKey = Keys.hmacShaKeyFor(jwtConfig.getSecret().getBytes(StandardCharsets.UTF_8));

@@ -28,6 +28,7 @@ import reactor.test.StepVerifier;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
@@ -58,7 +59,7 @@ class JwtAuthenticationGatewayFilterTest {
 
 	private JwtAuthenticationGatewayFilter filter() {
 		JwtAuthenticationManager manager = new JwtAuthenticationManager(properties,
-				new DefaultJwtClaimsMapper(properties));
+				new DefaultJwtClaimsMapper(properties), Clock.systemUTC());
 		return new JwtAuthenticationGatewayFilter(manager, errorWriter);
 	}
 
