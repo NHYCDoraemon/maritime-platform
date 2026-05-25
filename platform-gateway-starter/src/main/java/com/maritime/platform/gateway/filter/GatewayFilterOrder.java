@@ -23,5 +23,7 @@ public final class GatewayFilterOrder {
 
 	public static final int SECURITY_POLICY = Ordered.HIGHEST_PRECEDENCE + 20;
 
+	public static final int JWT_AUTHENTICATION = Ordered.HIGHEST_PRECEDENCE + 25;
+
 	public static final int CONTEXT_HEADER_INJECTION = Ordered.HIGHEST_PRECEDENCE + 30;
 }
