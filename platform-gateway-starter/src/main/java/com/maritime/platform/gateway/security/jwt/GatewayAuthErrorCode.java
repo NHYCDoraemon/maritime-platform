@@ -22,4 +22,5 @@ public final class GatewayAuthErrorCode {
 	public static final String UNKNOWN_APP = "UNKNOWN_APP";
 	public static final String APP_DISABLED = "APP_DISABLED";
 	public static final String FORBIDDEN = "FORBIDDEN";
+	public static final String UNSUPPORTED_AUTH_MODE = "UNSUPPORTED_AUTH_MODE";
 }

@@ -40,11 +40,28 @@ public class JwtAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 	@Override
 	public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
 		RouteSecurityPolicy policy = exchange.getAttribute(RouteSecurityPolicyFilter.POLICY_ATTR);
-		if (!requiresJwt(policy)) {
+		if (policy == null) {
+			return chain.filter(exchange);
+		}
+
+		AuthMode mode = policy.getAuthMode();
+
+		if (mode == AuthMode.JWT_AND_HMAC) {
+			return errorWriter.write(exchange, GatewayAuthErrorCode.UNSUPPORTED_AUTH_MODE);
+		}
+
+		if (mode != AuthMode.JWT && mode != AuthMode.JWT_OR_HMAC) {
 			return chain.filter(exchange);
 		}
 
 		String token = extractBearerToken(exchange);
+
+		// JWT_OR_HMAC: only require JWT when Bearer token is present;
+		// without a Bearer token, pass through to let HMAC handle it.
+		if (mode == AuthMode.JWT_OR_HMAC && (token == null || token.isEmpty())) {
+			return chain.filter(exchange);
+		}
+
 		if (token == null || token.isEmpty()) {
 			return errorWriter.write(exchange, GatewayAuthErrorCode.MISSING_TOKEN);
 		}
@@ -61,14 +78,6 @@ public class JwtAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 	@Override
 	public int getOrder() {
 		return GatewayFilterOrder.JWT_AUTHENTICATION;
-	}
-
-	private boolean requiresJwt(RouteSecurityPolicy policy) {
-		if (policy == null) {
-			return false;
-		}
-		AuthMode mode = policy.getAuthMode();
-		return mode == AuthMode.JWT || mode == AuthMode.JWT_OR_HMAC || mode == AuthMode.JWT_AND_HMAC;
 	}
 
 	private String extractBearerToken(ServerWebExchange exchange) {

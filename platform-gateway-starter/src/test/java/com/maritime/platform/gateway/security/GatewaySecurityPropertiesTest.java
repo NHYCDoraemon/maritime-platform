@@ -337,14 +337,15 @@ class GatewaySecurityPropertiesTest {
         }
 
         @Test
-        @DisplayName("binds jwt-and-hmac auth mode (reserved)")
-        void bindsJwtAndHmacAuthMode() {
-            runner.withPropertyValues(
-                    "maritime.gateway.security.default-auth-mode=jwt-and-hmac"
-            ).run(ctx -> {
-                var props = ctx.getBean(GatewaySecurityProperties.class);
-                assertThat(props.getDefaultAuthMode()).isEqualTo(AuthMode.JWT_AND_HMAC);
-            });
+        @DisplayName("binds jwt-and-hmac auth mode to enum but rejects at startup")
+        void bindsJwtAndHmacAuthModeButRejects() {
+            // JWT_AND_HMAC is recognized by the config model but rejected by validation
+            var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.JWT_AND_HMAC);
+
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("JWT_AND_HMAC");
         }
 
         @Test
@@ -425,6 +426,21 @@ class GatewaySecurityPropertiesTest {
             assertThatThrownBy(props::afterPropertiesSet)
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("nonce-ttl");
+        }
+
+        @Test
+        @DisplayName("JWT_AND_HMAC in route policy causes startup failure")
+        void jwtAndHmacRoutePolicyFails() {
+            var props = new GatewaySecurityProperties();
+            var route = new GatewaySecurityProperties.RoutePolicy();
+            route.setId("dual-route");
+            route.setPaths(java.util.List.of("/api/**"));
+            route.setAuthMode(AuthMode.JWT_AND_HMAC);
+            props.getRoutes().add(route);
+
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("JWT_AND_HMAC");
         }
 
         @Test

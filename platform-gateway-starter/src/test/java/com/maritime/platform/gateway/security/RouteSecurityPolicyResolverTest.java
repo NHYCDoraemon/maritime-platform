@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("RouteSecurityPolicyResolver tests")
 class RouteSecurityPolicyResolverTest {
@@ -254,9 +255,9 @@ class RouteSecurityPolicyResolverTest {
 		@Test
 		@DisplayName("custom default auth mode is honored")
 		void customDefaultAuthMode() {
-			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.JWT_AND_HMAC);
+			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.HMAC);
 
-			assertThat(resolve(props, "/unmatched", "GET").getAuthMode()).isEqualTo(AuthMode.JWT_AND_HMAC);
+			assertThat(resolve(props, "/unmatched", "GET").getAuthMode()).isEqualTo(AuthMode.HMAC);
 		}
 	}
 
@@ -337,6 +338,19 @@ class RouteSecurityPolicyResolverTest {
 					.getAuthMode()).isEqualTo(AuthMode.NONE);
 			assertThat(resolveWithCustomizers(props, "/data/item", "POST", customizers)
 					.getAuthMode()).isEqualTo(AuthMode.JWT);
+		}
+
+		@Test
+		@DisplayName("addRoutePolicy with JWT_AND_HMAC throws IllegalArgumentException")
+		void addRoutePolicyRejectsJwtAndHmac() {
+			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.JWT);
+			List<GatewaySecurityPolicyCustomizer> customizers = List.of(resolver -> {
+				assertThatThrownBy(() -> resolver.addRoutePolicy("dual",
+						List.of("/dual/**"), null, AuthMode.JWT_AND_HMAC))
+						.isInstanceOf(IllegalArgumentException.class)
+						.hasMessageContaining("JWT_AND_HMAC");
+			});
+			resolveWithCustomizers(props, "/other", "GET", customizers);
 		}
 	}
 

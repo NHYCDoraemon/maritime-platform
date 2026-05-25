@@ -39,6 +39,9 @@ public class DefaultGatewayErrorWriter implements GatewayErrorWriter {
 		if ("FORBIDDEN".equals(errorCode)) {
 			return HttpStatus.FORBIDDEN;
 		}
+		if ("UNSUPPORTED_AUTH_MODE".equals(errorCode)) {
+			return HttpStatus.NOT_IMPLEMENTED;
+		}
 		return HttpStatus.UNAUTHORIZED;
 	}
 

@@ -49,6 +49,16 @@ public class GatewaySecurityProperties implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() {
+        if (defaultAuthMode == AuthMode.JWT_AND_HMAC) {
+            throw new IllegalStateException(
+                    "maritime.gateway.security.default-auth-mode=JWT_AND_HMAC is reserved and not yet implemented");
+        }
+        for (RoutePolicy rp : routes) {
+            if (rp.authMode == AuthMode.JWT_AND_HMAC) {
+                throw new IllegalStateException(
+                        "Route '" + rp.id + "' uses JWT_AND_HMAC which is reserved and not yet implemented");
+            }
+        }
         if (jwt.enabled) {
             if (jwt.secret == null || jwt.secret.isBlank()) {
                 throw new IllegalStateException(

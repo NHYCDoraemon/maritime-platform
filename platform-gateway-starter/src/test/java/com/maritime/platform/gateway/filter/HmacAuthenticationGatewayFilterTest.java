@@ -288,7 +288,7 @@ class HmacAuthenticationGatewayFilterTest {
 		}
 
 		@Test
-		@DisplayName("JWT_OR_HMAC mode with HMAC succeeds")
+		@DisplayName("JWT_OR_HMAC mode with HMAC succeeds when no Bearer token")
 		void jwtOrHmacModeSucceeds() {
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.post("/api/data")
@@ -310,6 +310,103 @@ class HmacAuthenticationGatewayFilterTest {
 
 			GatewayPrincipal.App principal = captured.get().getAttribute(GatewayPrincipal.ATTRIBUTE);
 			assertThat(principal).isNotNull();
+		}
+	}
+
+	// ---------- JWT_OR_HMAC mixed mode ----------
+
+	@Nested
+	@DisplayName("JWT_OR_HMAC mixed mode")
+	class JwtOrHmacMixedMode {
+
+		@Test
+		@DisplayName("skips HMAC when Bearer token is present")
+		void skipsWhenBearerTokenPresent() {
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header("Authorization", "Bearer some.jwt.token")
+							.header(APP_KEY_HEADER, APP_KEY)
+							.header(TIMESTAMP_HEADER, "1700000000000")
+							.header(NONCE_HEADER, "nonce-0123456789abcdef")
+							.header(BODY_DIGEST_HEADER, "digest")
+							.header(SIGNATURE_HEADER, "sig"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_OR_HMAC, "dual-route"));
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			StepVerifier.create(filter().filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			// HMAC filter should skip, no principal set and no HMAC auth call
+			assertNull(captured.get().getAttribute(GatewayPrincipal.ATTRIBUTE));
+		}
+
+		@Test
+		@DisplayName("performs HMAC when no Bearer token, fails with HMAC error")
+		void hmacFailureReturnsHmacError() {
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header(APP_KEY_HEADER, APP_KEY)
+							.header(TIMESTAMP_HEADER, "1700000000000")
+							.header(NONCE_HEADER, "nonce-0123456789abcdef")
+							.header(BODY_DIGEST_HEADER, "digest")
+							.header(SIGNATURE_HEADER, "sig"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_OR_HMAC, "dual-route"));
+
+			when(authManager.authenticate(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+					.thenReturn(Mono.error(new JwtAuthenticationException(
+							GatewayAuthErrorCode.INVALID_SIGNATURE,
+							"Signature does not match")));
+
+			StepVerifier.create(filter().filter(exchange, passThroughChain()))
+					.verifyComplete();
+
+			String body = exchange.getResponse().getBodyAsString().block();
+			assertThat(body).contains(GatewayAuthErrorCode.INVALID_SIGNATURE);
+		}
+	}
+
+	// ---------- JWT_AND_HMAC reserved mode ----------
+
+	@Nested
+	@DisplayName("JWT_AND_HMAC reserved mode")
+	class JwtAndHmacReserved {
+
+		@Test
+		@DisplayName("JWT_AND_HMAC returns UNSUPPORTED_AUTH_MODE with 501")
+		void jwtAndHmacReturnsUnsupported() {
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header(APP_KEY_HEADER, APP_KEY));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_AND_HMAC, "reserved-route"));
+
+			StepVerifier.create(filter().filter(exchange, passThroughChain()))
+					.verifyComplete();
+
+			assertThat(exchange.getResponse().getStatusCode().value()).isEqualTo(501);
+			String body = exchange.getResponse().getBodyAsString().block();
+			assertThat(body).contains(GatewayAuthErrorCode.UNSUPPORTED_AUTH_MODE);
+		}
+
+		@Test
+		@DisplayName("JWT_AND_HMAC response is valid JSON")
+		void jwtAndHmacResponseIsJson() {
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header(APP_KEY_HEADER, APP_KEY));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_AND_HMAC, "reserved-route"));
+
+			StepVerifier.create(filter().filter(exchange, passThroughChain()))
+					.verifyComplete();
+
+			String body = exchange.getResponse().getBodyAsString().block();
+			assertThat(body).contains("\"code\"");
+			assertThat(body).contains("\"message\"");
+			assertThat(body).startsWith("{");
+			assertThat(body).endsWith("}");
 		}
 	}
 

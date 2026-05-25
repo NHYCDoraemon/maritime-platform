@@ -337,6 +337,109 @@ class JwtAuthenticationGatewayFilterTest {
 		}
 	}
 
+	// ---------- JWT_OR_HMAC specific behavior ----------
+
+	@Nested
+	@DisplayName("JWT_OR_HMAC mixed mode")
+	class JwtOrHmacMixedMode {
+
+		@Test
+		@DisplayName("without Bearer token passes through to let HMAC handle")
+		void withoutBearerPassesThrough() {
+			JwtAuthenticationGatewayFilter f = filter();
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/data"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_OR_HMAC, "dual-route"));
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			StepVerifier.create(f.filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			assertNull(captured.get().getAttribute(GatewayPrincipal.ATTRIBUTE));
+		}
+
+		@Test
+		@DisplayName("with non-Bearer Authorization passes through")
+		void withNonBearerPassesThrough() {
+			JwtAuthenticationGatewayFilter f = filter();
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/data")
+							.header("Authorization", "Basic dXNlcjpwYXNz"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_OR_HMAC, "dual-route"));
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			StepVerifier.create(f.filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			assertNull(captured.get().getAttribute(GatewayPrincipal.ATTRIBUTE));
+		}
+
+		@Test
+		@DisplayName("with invalid Bearer token returns JWT error, no HMAC fallback")
+		void invalidBearerReturnsJwtError() {
+			JwtAuthenticationGatewayFilter f = filter();
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/data")
+							.header("Authorization", "Bearer malformed.token.here"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_OR_HMAC, "dual-route"));
+
+			StepVerifier.create(f.filter(exchange, passThroughChain()))
+					.verifyComplete();
+
+			assertThat(exchange.getResponse().getStatusCode().value()).isEqualTo(401);
+			String body = exchange.getResponse().getBodyAsString().block();
+			assertThat(body).contains(GatewayAuthErrorCode.INVALID_TOKEN);
+		}
+	}
+
+	// ---------- JWT_AND_HMAC reserved mode ----------
+
+	@Nested
+	@DisplayName("JWT_AND_HMAC reserved mode")
+	class JwtAndHmacReserved {
+
+		@Test
+		@DisplayName("JWT_AND_HMAC returns UNSUPPORTED_AUTH_MODE with 501")
+		void jwtAndHmacReturnsUnsupported() {
+			JwtAuthenticationGatewayFilter f = filter();
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/data")
+							.header("Authorization", "Bearer token"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_AND_HMAC, "reserved-route"));
+
+			StepVerifier.create(f.filter(exchange, passThroughChain()))
+					.verifyComplete();
+
+			assertThat(exchange.getResponse().getStatusCode().value()).isEqualTo(501);
+			String body = exchange.getResponse().getBodyAsString().block();
+			assertThat(body).contains(GatewayAuthErrorCode.UNSUPPORTED_AUTH_MODE);
+		}
+
+		@Test
+		@DisplayName("JWT_AND_HMAC response is valid JSON")
+		void jwtAndHmacResponseIsJson() {
+			JwtAuthenticationGatewayFilter f = filter();
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/data")
+							.header("Authorization", "Bearer token"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_AND_HMAC, "reserved-route"));
+
+			StepVerifier.create(f.filter(exchange, passThroughChain()))
+					.verifyComplete();
+
+			String body = exchange.getResponse().getBodyAsString().block();
+			assertThat(body).contains("\"code\"");
+			assertThat(body).contains("\"message\"");
+			assertThat(body).startsWith("{");
+			assertThat(body).endsWith("}");
+		}
+	}
+
 	// ---------- auth mode passthrough ----------
 
 	@Nested
