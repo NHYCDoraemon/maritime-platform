@@ -33,6 +33,7 @@
         <module>platform-common-feign</module>
         <module>platform-common-openapi</module>
         <module>iam-sdk</module>
+        <module>platform-gateway-starter</module>
     </modules>
 
     <properties>
