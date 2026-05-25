@@ -27,5 +27,7 @@ public final class GatewayFilterOrder {
 
 	public static final int JWT_NONCE = Ordered.HIGHEST_PRECEDENCE + 28;
 
+	public static final int HMAC_AUTHENTICATION = Ordered.HIGHEST_PRECEDENCE + 29;
+
 	public static final int CONTEXT_HEADER_INJECTION = Ordered.HIGHEST_PRECEDENCE + 30;
 }

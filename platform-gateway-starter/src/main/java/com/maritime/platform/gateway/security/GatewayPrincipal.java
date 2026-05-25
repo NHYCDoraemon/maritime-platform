@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Authenticated principal placed in the exchange after successful authentication.
  */
-public sealed interface GatewayPrincipal permits GatewayPrincipal.User {
+public sealed interface GatewayPrincipal permits GatewayPrincipal.User, GatewayPrincipal.App {
 
 	String ATTRIBUTE = "gateway.principal";
 
@@ -23,5 +23,8 @@ public sealed interface GatewayPrincipal permits GatewayPrincipal.User {
 		public User {
 			systemScope = systemScope != null ? List.copyOf(systemScope) : List.of();
 		}
+	}
+
+	record App(String appKey, String appCode) implements GatewayPrincipal {
 	}
 }

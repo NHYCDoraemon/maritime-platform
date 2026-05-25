@@ -1,0 +1,160 @@
+package com.maritime.platform.gateway.filter;
+
+import com.maritime.platform.gateway.security.AuthMode;
+import com.maritime.platform.gateway.security.GatewayPrincipal;
+import com.maritime.platform.gateway.security.GatewaySecurityProperties;
+import com.maritime.platform.gateway.security.RouteSecurityPolicy;
+import com.maritime.platform.gateway.security.hmac.HmacAuthenticationManager;
+import com.maritime.platform.gateway.security.jwt.GatewayAuthErrorCode;
+import com.maritime.platform.gateway.security.jwt.JwtAuthenticationException;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.nio.charset.StandardCharsets;
+
+/**
+ * Authenticates system-to-system requests using HMAC-SHA256 signatures.
+ * <p>
+ * Reads the request body once to compute the SHA-256 digest, then caches it
+ * in a decorated exchange so downstream filters and handlers can still read it.
+ * Stores the mapped {@link GatewayPrincipal.App} in the exchange.
+ */
+@Component
+@ConditionalOnProperty("maritime.gateway.security.hmac.enabled")
+@Order(GatewayFilterOrder.HMAC_AUTHENTICATION)
+public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
+
+	private final HmacAuthenticationManager authManager;
+	private final GatewaySecurityProperties properties;
+
+	public HmacAuthenticationGatewayFilter(HmacAuthenticationManager authManager,
+			GatewaySecurityProperties properties) {
+		this.authManager = authManager;
+		this.properties = properties;
+	}
+
+	@Override
+	public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+		RouteSecurityPolicy policy = exchange.getAttribute(RouteSecurityPolicyFilter.POLICY_ATTR);
+		if (!requiresHmac(policy)) {
+			return chain.filter(exchange);
+		}
+
+		GatewaySecurityProperties.Headers hdrs = properties.getHmac().getHeaders();
+		String appKey = exchange.getRequest().getHeaders().getFirst(hdrs.getAppKey());
+		String timestamp = exchange.getRequest().getHeaders().getFirst(hdrs.getTimestamp());
+		String nonce = exchange.getRequest().getHeaders().getFirst(hdrs.getNonce());
+		String bodyDigest = exchange.getRequest().getHeaders().getFirst(hdrs.getBodyDigest());
+		String signature = exchange.getRequest().getHeaders().getFirst(hdrs.getSignature());
+
+		if (isAnyBlank(appKey, timestamp, nonce, bodyDigest, signature)) {
+			return writeError(exchange, GatewayAuthErrorCode.MISSING_HMAC_HEADERS,
+					"Missing one or more HMAC headers: " +
+							hdrs.getAppKey() + ", " + hdrs.getTimestamp() + ", " +
+							hdrs.getNonce() + ", " + hdrs.getBodyDigest() + ", " +
+							hdrs.getSignature());
+		}
+
+		return readAndCacheBody(exchange)
+				.flatMap(cachedExchange -> {
+					byte[] bodyBytes = cachedExchange.getAttribute("gateway.cachedBody");
+					String method = exchange.getRequest().getMethod().name();
+					String rawPath = exchange.getRequest().getURI().getRawPath();
+					String rawQuery = exchange.getRequest().getURI().getRawQuery();
+
+					return authManager.authenticate(appKey, timestamp, nonce, bodyDigest, signature,
+									method, rawPath, rawQuery, bodyBytes != null ? bodyBytes : new byte[0])
+							.flatMap(principal -> {
+								cachedExchange.getAttributes().put(GatewayPrincipal.ATTRIBUTE, principal);
+								return chain.filter(cachedExchange);
+							})
+							.onErrorResume(JwtAuthenticationException.class,
+									e -> writeError(cachedExchange, e.getErrorCode(), e.getMessage()));
+				});
+	}
+
+	@Override
+	public int getOrder() {
+		return GatewayFilterOrder.HMAC_AUTHENTICATION;
+	}
+
+	/**
+	 * Reads the request body once, caches the bytes, and returns a decorated exchange
+	 * whose request body can be re-read by downstream filters and handlers.
+	 */
+	private Mono<ServerWebExchange> readAndCacheBody(ServerWebExchange exchange) {
+		return DataBufferUtils.join(exchange.getRequest().getBody())
+				.map(buf -> {
+					byte[] bytes = new byte[buf.readableByteCount()];
+					buf.read(bytes);
+					DataBufferUtils.release(buf);
+					return bytes;
+				})
+				.switchIfEmpty(Mono.just(new byte[0]))
+				.map(bytes -> {
+					ServerHttpRequest decorated = new ServerHttpRequestDecorator(exchange.getRequest()) {
+						@Override
+						public Flux<DataBuffer> getBody() {
+							return Flux.just(
+									exchange.getResponse().bufferFactory().wrap(bytes));
+						}
+					};
+					ServerWebExchange cached = exchange.mutate().request(decorated).build();
+					cached.getAttributes().put("gateway.cachedBody", bytes);
+					return cached;
+				});
+	}
+
+	private boolean requiresHmac(RouteSecurityPolicy policy) {
+		if (policy == null) {
+			return false;
+		}
+		AuthMode mode = policy.getAuthMode();
+		return mode == AuthMode.HMAC || mode == AuthMode.JWT_OR_HMAC || mode == AuthMode.JWT_AND_HMAC;
+	}
+
+	private boolean isAnyBlank(String... values) {
+		for (String v : values) {
+			if (v == null || v.isBlank()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private Mono<Void> writeError(ServerWebExchange exchange, String code, String message) {
+		exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+		exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
+		String body = String.format("{\"code\":\"%s\",\"message\":\"%s\"}",
+				escapeJson(code), escapeJson(message));
+		byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+		return exchange.getResponse()
+				.writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(bytes)));
+	}
+
+	private static String escapeJson(String s) {
+		if (s == null) {
+			return "";
+		}
+		return s.replace("\\", "\\\\")
+				.replace("\"", "\\\"")
+				.replace("\n", "\\n")
+				.replace("\r", "\\r")
+				.replace("\t", "\\t");
+	}
+}
