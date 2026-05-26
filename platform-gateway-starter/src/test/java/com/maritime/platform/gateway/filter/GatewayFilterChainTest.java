@@ -94,8 +94,9 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("all filters implement Ordered")
 		void allImplementOrdered() {
+			GatewaySecurityProperties props = new GatewaySecurityProperties();
 			assertThat(new TraceIdGatewayFilter()).isInstanceOf(Ordered.class);
-			assertThat(new UntrustedHeaderStripFilter()).isInstanceOf(Ordered.class);
+			assertThat(new UntrustedHeaderStripFilter(props)).isInstanceOf(Ordered.class);
 			assertThat(new RequestLogGatewayFilter()).isInstanceOf(Ordered.class);
 			assertThat(new ContextHeaderInjectionFilter(new TrustedHeaderWriter(), null)).isInstanceOf(Ordered.class);
 		}
@@ -189,7 +190,7 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("strips trusted internal headers from request")
 		void stripsTrustedHeaders() {
-			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			MockServerHttpRequest request = MockServerHttpRequest.get("/test")
 					.header("X-Internal-Call", "true")
 					.header("X-User-Id", "hacker")
@@ -217,7 +218,7 @@ class GatewayFilterChainTest {
 			filter.filter(exchange, capturingChain(captured)).block();
 
 			HttpHeaders headers = captured.get().getRequest().getHeaders();
-			for (String untrusted : UntrustedHeaderStripFilter.UNTRUSTED_HEADERS) {
+			for (String untrusted : UntrustedHeaderStripFilter.CONTEXT_HEADERS) {
 				assertThat(headers.getFirst(untrusted))
 						.as("header '%s' should have been stripped", untrusted)
 						.isNull();
@@ -229,7 +230,7 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("strips X-Internal-Call on public path")
 		void stripsInternalCallOnPublicPath() {
-			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			MockServerHttpRequest request = MockServerHttpRequest.get("/public/health")
 					.header("X-Internal-Call", "yes")
 					.header("X-User-Id", "attacker")
@@ -247,7 +248,7 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("request without internal headers passes through unchanged for benign headers")
 		void noInternalHeadersPassesThrough() {
-			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			MockServerHttpRequest request = MockServerHttpRequest.get("/api/data")
 					.header("Accept", "application/json")
 					.header("X-Request-Id", "custom-id")
@@ -265,7 +266,7 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("HMAC signature header X-App-Key is preserved for downstream HMAC auth")
 		void preservesHmacAppKeyHeader() {
-			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			MockServerHttpRequest request = MockServerHttpRequest.get("/api/data")
 					.header("X-App-Key", "app-001")
 					.header("X-Timestamp", "1700000000000")
@@ -303,7 +304,7 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("all paths are filtered including public")
 		void allPathsAreFiltered() {
-			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			for (String path : List.of("/", "/public/health", "/api/secure", "/actuator/info")) {
 				MockServerHttpRequest request = MockServerHttpRequest.get(path)
 						.header("X-Internal-Call", "1")
@@ -317,6 +318,45 @@ class GatewayFilterChainTest {
 						.as("X-Internal-Call should be stripped on path: %s", path)
 						.isNull();
 			}
+		}
+
+		@Test
+		@DisplayName("custom X-App-Code as HMAC app-key header survives untrusted strip")
+		void customAppCodeAsAppKeyHeaderSurvivesStrip() {
+			GatewaySecurityProperties props = new GatewaySecurityProperties();
+			props.getHmac().getHeaders().setAppKey("X-App-Code");
+			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter(props);
+
+			MockServerHttpRequest request = MockServerHttpRequest.get("/api/data")
+					.header("X-App-Code", "app-custom-001")
+					.header("X-Timestamp", "1700000000000")
+					.header("X-Nonce", "nonce-0123456789abcdef")
+					.header("X-Body-Digest", "sha256-digest")
+					.header("X-Signature", "signature-value")
+					.header("X-App-Key", "forged-default-key")
+					.header("X-App-Id", "999")
+					.header("X-Verified-App-Code", "forged-verified")
+					.header("X-App-Permissions", "admin")
+					.build();
+			MockServerWebExchange exchange = MockServerWebExchange.from(request);
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			// Custom HMAC signature header survives
+			assertThat(headers.getFirst("X-App-Code")).isEqualTo("app-custom-001");
+			assertThat(headers.getFirst("X-Timestamp")).isEqualTo("1700000000000");
+			assertThat(headers.getFirst("X-Nonce")).isEqualTo("nonce-0123456789abcdef");
+			assertThat(headers.getFirst("X-Body-Digest")).isEqualTo("sha256-digest");
+			assertThat(headers.getFirst("X-Signature")).isEqualTo("signature-value");
+			// Default X-App-Key is not a configured HMAC header or context header,
+			// so it passes through as a regular harmless header
+			assertThat(headers.getFirst("X-App-Key")).isEqualTo("forged-default-key");
+			// Other context headers still stripped
+			assertThat(headers.getFirst("X-App-Id")).isNull();
+			assertThat(headers.getFirst("X-Verified-App-Code")).isNull();
+			assertThat(headers.getFirst("X-App-Permissions")).isNull();
 		}
 	}
 
@@ -417,7 +457,7 @@ class GatewayFilterChainTest {
 			resolver.afterPropertiesSet();
 
 			TraceIdGatewayFilter trace = new TraceIdGatewayFilter();
-			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			RequestLogGatewayFilter logFilter = new RequestLogGatewayFilter();
 			RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
@@ -469,7 +509,7 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("header strip runs even when trace ID is missing")
 		void headerStripRunsWithoutTraceId() {
-			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/any/path")
 							.header("X-Internal-Call", "1"));
@@ -505,7 +545,7 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("forged JWT headers stripped, then gateway-injected headers prevail")
 		void forgedJwtHeadersStrippedAndInjected() {
-			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
 			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
 
@@ -561,7 +601,7 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("forged app headers stripped, then HMAC-injected headers prevail")
 		void forgedAppHeadersStrippedAndInjected() {
-			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
 			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
 
@@ -606,7 +646,7 @@ class GatewayFilterChainTest {
 		@Test
 		@DisplayName("forged headers stripped even when no auth principal (public paths)")
 		void forgedHeadersStrippedEvenWithoutAuth() {
-			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter();
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
 			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
 

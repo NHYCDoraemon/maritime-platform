@@ -61,13 +61,13 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 		}
 
 		if (mode != AuthMode.HMAC && mode != AuthMode.JWT_OR_HMAC) {
-			return chain.filter(exchange);
+			return chain.filter(stripHmacHeadersFromExchange(exchange));
 		}
 
 		// JWT_OR_HMAC: when a Bearer token is present, JWT handles auth;
 		// skip HMAC to avoid interfering with the JWT path.
 		if (mode == AuthMode.JWT_OR_HMAC && hasBearerToken(exchange)) {
-			return chain.filter(exchange);
+			return chain.filter(stripHmacHeadersFromExchange(exchange));
 		}
 
 		GatewaySecurityProperties.Headers hdrs = properties.getHmac().getHeaders();
@@ -128,6 +128,25 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 				return headerStripped.getBody();
 			}
 		};
+	}
+
+	/**
+	 * Returns a new exchange whose request has all configured HMAC signature
+	 * headers removed. Used on pass-through paths (NONE, JWT, JWT_OR_HMAC
+	 * with Bearer) to ensure raw signature material never reaches downstream.
+	 */
+	private ServerWebExchange stripHmacHeadersFromExchange(ServerWebExchange exchange) {
+		GatewaySecurityProperties.Headers hdrs = properties.getHmac().getHeaders();
+		ServerHttpRequest stripped = exchange.getRequest().mutate()
+				.headers(h -> {
+					h.remove(hdrs.getAppKey());
+					h.remove(hdrs.getTimestamp());
+					h.remove(hdrs.getNonce());
+					h.remove(hdrs.getBodyDigest());
+					h.remove(hdrs.getSignature());
+				})
+				.build();
+		return exchange.mutate().request(stripped).build();
 	}
 
 	/**

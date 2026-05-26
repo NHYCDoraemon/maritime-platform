@@ -564,6 +564,143 @@ class HmacAuthenticationGatewayFilterTest {
 			assertThat(downstreamHeaders.getFirst(TIMESTAMP_HEADER)).isNull();
 			assertThat(downstreamHeaders.getFirst(SIGNATURE_HEADER)).isNull();
 		}
+
+		@Test
+		@DisplayName("custom X-App-Code as app-key header stripped after successful auth")
+		void customAppCodeHeaderStrippedAfterAuth() {
+			properties.getHmac().getHeaders().setAppKey("X-App-Code");
+			HmacAuthenticationGatewayFilter customFilter = filter();
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header("X-App-Code", APP_KEY)
+							.header(TIMESTAMP_HEADER, "1700000000000")
+							.header(NONCE_HEADER, "nonce-0123456789abcdef")
+							.header(BODY_DIGEST_HEADER, "digest")
+							.header(SIGNATURE_HEADER, "sig"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.HMAC, "hmac-route"));
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			GatewayPrincipal.App expectedPrincipal = testAppPrincipal();
+			when(authManager.authenticate(any(), any(), any(),
+					any(), any(), any(), any(), any(), any()))
+					.thenReturn(Mono.just(expectedPrincipal));
+
+			StepVerifier.create(customFilter.filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			HttpHeaders downstreamHeaders = captured.get().getRequest().getHeaders();
+			assertThat(downstreamHeaders.getFirst("X-App-Code")).isNull();
+			assertThat(downstreamHeaders.getFirst(TIMESTAMP_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(NONCE_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(BODY_DIGEST_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(SIGNATURE_HEADER)).isNull();
+		}
+	}
+
+	// ---------- HMAC header stripping on passthrough paths ----------
+
+	@Nested
+	@DisplayName("HMAC header stripping on passthrough paths")
+	class PassthroughHeaderStripping {
+
+		@Test
+		@DisplayName("JWT auth mode: downstream does not contain raw HMAC headers")
+		void jwtModeStripsHmacHeaders() {
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header(APP_KEY_HEADER, APP_KEY)
+							.header(TIMESTAMP_HEADER, "1700000000000")
+							.header(NONCE_HEADER, "nonce-0123456789abcdef")
+							.header(BODY_DIGEST_HEADER, "digest")
+							.header(SIGNATURE_HEADER, "sig"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT, "jwt-route"));
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			StepVerifier.create(filter().filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			HttpHeaders downstreamHeaders = captured.get().getRequest().getHeaders();
+			assertThat(downstreamHeaders.getFirst(APP_KEY_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(TIMESTAMP_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(NONCE_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(BODY_DIGEST_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(SIGNATURE_HEADER)).isNull();
+		}
+
+		@Test
+		@DisplayName("NONE auth mode: downstream does not contain raw HMAC headers")
+		void noneModeStripsHmacHeaders() {
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/public/health")
+							.header(APP_KEY_HEADER, APP_KEY)
+							.header(TIMESTAMP_HEADER, "1700000000000")
+							.header(NONCE_HEADER, "nonce-0123456789abcdef")
+							.header(BODY_DIGEST_HEADER, "digest")
+							.header(SIGNATURE_HEADER, "sig"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.NONE, "PUBLIC:/health"));
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			StepVerifier.create(filter().filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			HttpHeaders downstreamHeaders = captured.get().getRequest().getHeaders();
+			assertThat(downstreamHeaders.getFirst(APP_KEY_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(TIMESTAMP_HEADER)).isNull();
+		}
+
+		@Test
+		@DisplayName("JWT_OR_HMAC with Bearer token: downstream does not contain raw HMAC headers")
+		void jwtOrHmacBearerStripsHmacHeaders() {
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header("Authorization", "Bearer some.jwt.token")
+							.header(APP_KEY_HEADER, APP_KEY)
+							.header(TIMESTAMP_HEADER, "1700000000000")
+							.header(NONCE_HEADER, "nonce-0123456789abcdef")
+							.header(BODY_DIGEST_HEADER, "digest")
+							.header(SIGNATURE_HEADER, "sig"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT_OR_HMAC, "dual-route"));
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			StepVerifier.create(filter().filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			HttpHeaders downstreamHeaders = captured.get().getRequest().getHeaders();
+			assertThat(downstreamHeaders.getFirst(APP_KEY_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(TIMESTAMP_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(NONCE_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(BODY_DIGEST_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(SIGNATURE_HEADER)).isNull();
+		}
+
+		@Test
+		@DisplayName("custom X-App-Code as app-key header stripped on JWT passthrough")
+		void customAppCodeStrippedOnJwtPassthrough() {
+			properties.getHmac().getHeaders().setAppKey("X-App-Code");
+			HmacAuthenticationGatewayFilter customFilter = filter();
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/data")
+							.header("X-App-Code", APP_KEY)
+							.header(TIMESTAMP_HEADER, "1700000000000")
+							.header(SIGNATURE_HEADER, "sig"));
+			exchange.getAttributes().put(RouteSecurityPolicyFilter.POLICY_ATTR,
+					new RouteSecurityPolicy(AuthMode.JWT, "jwt-route"));
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			StepVerifier.create(customFilter.filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			HttpHeaders downstreamHeaders = captured.get().getRequest().getHeaders();
+			assertThat(downstreamHeaders.getFirst("X-App-Code")).isNull();
+			assertThat(downstreamHeaders.getFirst(TIMESTAMP_HEADER)).isNull();
+			assertThat(downstreamHeaders.getFirst(SIGNATURE_HEADER)).isNull();
+		}
 	}
 
 	// ---------- error response format ----------

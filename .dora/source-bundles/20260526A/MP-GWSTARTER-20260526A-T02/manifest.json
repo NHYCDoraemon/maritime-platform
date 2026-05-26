@@ -1,0 +1,36 @@
+{
+  "batch_id": "20260526A",
+  "execution_packet_version": 1,
+  "required_read_paths": [
+    "/Users/raymond/.dora/orchestrator/worktrees/maritime-platform/20260526A/.dora/source-bundles/20260526A/MP-GWSTARTER-20260526A-T02/source-bundle.md",
+    "/Users/raymond/.dora/orchestrator/worktrees/maritime-platform/20260526A/docs/superpowers/specs/2026-05-25-platform-gateway-starter-design.md",
+    "/Users/raymond/.dora/orchestrator/worktrees/maritime-platform/20260526A/docs/superpowers/plans/2026-05-26-platform-gateway-starter-audit-hardening-batch.md"
+  ],
+  "slices": [],
+  "source_docs": [
+    {
+      "absolute_path": "/Users/raymond/.dora/orchestrator/worktrees/maritime-platform/20260526A/docs/superpowers/specs/2026-05-25-platform-gateway-starter-design.md",
+      "kind": "source_pages",
+      "path": "docs/superpowers/specs/2026-05-25-platform-gateway-starter-design.md",
+      "required": true,
+      "sha256": "sha256:0633485dc1f0421dfc63725f6f6a773db9d30f679f4c1ca8ca73e6ce9a721361"
+    },
+    {
+      "absolute_path": "/Users/raymond/.dora/orchestrator/worktrees/maritime-platform/20260526A/docs/superpowers/plans/2026-05-26-platform-gateway-starter-audit-hardening-batch.md",
+      "kind": "source_docs",
+      "path": "docs/superpowers/plans/2026-05-26-platform-gateway-starter-audit-hardening-batch.md",
+      "required": true,
+      "sha256": "sha256:3db33de3e158e01716daea77fdc7e857ef656fc8371a0e5c1c3a10e5ab1f0457"
+    },
+    {
+      "absolute_path": "/Users/raymond/.dora/orchestrator/worktrees/maritime-platform/20260526A/docs/superpowers/plans/2026-05-26-platform-gateway-starter-audit-hardening-batch.md",
+      "kind": "source_summaries",
+      "path": "docs/superpowers/plans/2026-05-26-platform-gateway-starter-audit-hardening-batch.md",
+      "required": true,
+      "sha256": "sha256:3db33de3e158e01716daea77fdc7e857ef656fc8371a0e5c1c3a10e5ab1f0457"
+    }
+  ],
+  "source_queries": [],
+  "source_tables": [],
+  "task_key": "MP-GWSTARTER-20260526A-T02"
+}

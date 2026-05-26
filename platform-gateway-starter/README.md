@@ -118,17 +118,19 @@ jwt:
 
 ### 请求标准
 
-调用方在请求中携带以下 header：
+调用方在请求中携带以下 header（所有 header 名称均可通过配置覆盖）：
 
-| Header | 说明 |
-|--------|------|
-| `X-App-Key` | 应用标识 |
-| `X-Timestamp` | Unix 时间戳（毫秒），允许偏差默认 5 分钟 |
-| `X-Nonce` | 随机字符串，最短 16 字符，防重放 |
-| `X-Body-Digest` | 请求体 SHA-256 hex |
-| `X-Signature` | HMAC-SHA256 签名 |
+| Header | 说明 | 配置键 |
+|--------|------|--------|
+| `X-App-Key` | 应用标识 | `maritime.gateway.security.hmac.headers.app-key` |
+| `X-Timestamp` | Unix 时间戳（毫秒），允许偏差默认 5 分钟 | `maritime.gateway.security.hmac.headers.timestamp` |
+| `X-Nonce` | 随机字符串，最短 16 字符，防重放 | `maritime.gateway.security.hmac.headers.nonce` |
+| `X-Body-Digest` | 请求体 SHA-256 hex | `maritime.gateway.security.hmac.headers.body-digest` |
+| `X-Signature` | HMAC-SHA256 签名 | `maritime.gateway.security.hmac.headers.signature` |
 
 签名 base string 为换行符连接的规范请求（由 starter 内部构建），密钥为 `appSecret`。
+
+> **自定义 header 名称：** 五个 HMAC 入站 header 均可通过配置改为自定义名称，例如 `hmac.headers.app-key=X-App-Code`。自定义名称在认证前会被 `UntrustedHeaderStripFilter` 保留，认证后由 `HmacAuthenticationGatewayFilter` 移除，上下文注入阶段再由 `ContextHeaderInjectionFilter` 写入已验证的值。同名 header 的生命周期是：客户端原始值 → 网关认证读取 → 网关移除 → 网关注入已验证值。
 
 ### 服务端校验链
 
@@ -173,7 +175,7 @@ hmac:
 
 ### 清理清单
 
-以下 header **对所有请求**（含公开路径）无条件移除，确保客户端无法伪造内部身份：
+以下可信上下文 header **对所有请求**（含公开路径）无条件移除，确保客户端无法伪造内部身份：
 
 ```
 X-Internal-Call
@@ -183,11 +185,13 @@ X-Session-Id
 X-System-Scope
 X-User-Source
 X-Tenant-Id, X-Tenant-Code
-X-App-Key, X-App-Code, X-App-Id
+X-App-Code, X-App-Id
 X-Verified-App-Code
 X-App-Permissions
 X-Trace-Id
 ```
+
+> **HMAC 签名 header 保留机制：** 当前配置的 HMAC 入站签名 header（`X-App-Key`、`X-Timestamp`、`X-Nonce`、`X-Body-Digest`、`X-Signature` 及其自定义名称）**不会**被 `UntrustedHeaderStripFilter` 清理，因为 HMAC 认证需要读取它们。这些签名 header 在认证决策后由 `HmacAuthenticationGatewayFilter` 移除 —— 无论是 HMAC 认证成功、认证失败（返回错误响应）、还是走 JWT/NONE 旁路，原始签名材料都不会到达下游业务服务。
 
 ### 注入清单
 
