@@ -458,6 +458,9 @@ class GatewayStarterIntegrationTest {
             GatewaySecurityProperties props = new GatewaySecurityProperties();
             props.setDefaultAuthMode(AuthMode.NONE);
             props.getPublicPaths().add("/public/**");
+            props.getJwt().setEnabled(true);
+            props.getJwt().setSecret("test-secret");
+            props.getJwt().setIssuer("test-issuer");
 
             RouteSecurityPolicyResolver r = new RouteSecurityPolicyResolver(props);
             r.addRoutePolicy("jwt-route", java.util.List.of("/api/**"), java.util.List.of(), AuthMode.JWT);
@@ -473,6 +476,7 @@ class GatewayStarterIntegrationTest {
         void hmacMode() {
             GatewaySecurityProperties props = new GatewaySecurityProperties();
             props.setDefaultAuthMode(AuthMode.NONE);
+            props.getHmac().setEnabled(true);
 
             RouteSecurityPolicyResolver r = new RouteSecurityPolicyResolver(props);
             r.addRoutePolicy("hmac-route", java.util.List.of("/openapi/**"), java.util.List.of(), AuthMode.HMAC);
@@ -487,6 +491,10 @@ class GatewayStarterIntegrationTest {
         void jwtOrHmacMode() {
             GatewaySecurityProperties props = new GatewaySecurityProperties();
             props.setDefaultAuthMode(AuthMode.NONE);
+            props.getJwt().setEnabled(true);
+            props.getJwt().setSecret("test-secret");
+            props.getJwt().setIssuer("test-issuer");
+            props.getHmac().setEnabled(true);
 
             RouteSecurityPolicyResolver r = new RouteSecurityPolicyResolver(props);
             r.addRoutePolicy("dual-route", java.util.List.of("/dual/**"), java.util.List.of(), AuthMode.JWT_OR_HMAC);

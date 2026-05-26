@@ -62,6 +62,10 @@ public class RouteSecurityPolicyResolver implements InitializingBean {
 			throw new IllegalArgumentException(
 					"Route '" + id + "' uses JWT_AND_HMAC which is reserved and not yet implemented");
 		}
+		AuthModeValidator.validateEnabled(authMode,
+				"programmatic route '" + id + "'",
+				properties.getJwt().isEnabled(),
+				properties.getHmac().isEnabled());
 		programmaticRoutes.add(new ProgrammaticRouteRule(id, paths, methods, authMode));
 	}
 

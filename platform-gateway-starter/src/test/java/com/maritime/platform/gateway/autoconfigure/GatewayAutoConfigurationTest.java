@@ -2,14 +2,20 @@ package com.maritime.platform.gateway.autoconfigure;
 
 import com.maritime.platform.gateway.error.DefaultGatewayErrorWriter;
 import com.maritime.platform.gateway.error.GatewayErrorWriter;
+import com.maritime.platform.gateway.security.AuthMode;
+import com.maritime.platform.gateway.security.GatewaySecurityPolicyCustomizer;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
+
+import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -169,6 +175,69 @@ class GatewayAutoConfigurationTest {
                 assertThat(ctx).hasNotFailed();
                 assertThat(ctx).hasSingleBean(GatewaySecurityProperties.class);
             });
+        }
+
+        @Test
+        @DisplayName("context fails when customizer adds JWT programmatic route but jwt.enabled=false")
+        void customizerJwtRouteWithoutJwtEnabledFails() {
+            runner.withUserConfiguration(CustomizerAddsJwtRoute.class).run(ctx -> {
+                assertThat(ctx).getFailure().isNotNull();
+                assertThat(ctx.getStartupFailure())
+                        .hasMessageContaining("programmatic route")
+                        .hasMessageContaining("prog-jwt")
+                        .hasMessageContaining("jwt.enabled");
+            });
+        }
+
+        @Test
+        @DisplayName("context fails when customizer adds HMAC programmatic route but hmac.enabled=false")
+        void customizerHmacRouteWithoutHmacEnabledFails() {
+            runner.withUserConfiguration(CustomizerAddsHmacRoute.class).run(ctx -> {
+                assertThat(ctx).getFailure().isNotNull();
+                assertThat(ctx.getStartupFailure())
+                        .hasMessageContaining("programmatic route")
+                        .hasMessageContaining("prog-hmac")
+                        .hasMessageContaining("hmac.enabled");
+            });
+        }
+
+        @Test
+        @DisplayName("context fails when customizer adds JWT_OR_HMAC programmatic route without both enabled")
+        void customizerJwtOrHmacRouteWithoutBothEnabledFails() {
+            runner.withUserConfiguration(CustomizerAddsJwtOrHmacRoute.class).run(ctx -> {
+                assertThat(ctx).getFailure().isNotNull();
+                assertThat(ctx.getStartupFailure())
+                        .hasMessageContaining("programmatic route")
+                        .hasMessageContaining("prog-dual")
+                        .hasMessageContaining("JWT_OR_HMAC");
+            });
+        }
+
+        @TestConfiguration(proxyBeanMethods = false)
+        static class CustomizerAddsJwtRoute {
+            @Bean
+            GatewaySecurityPolicyCustomizer jwtCustomizer() {
+                return resolver -> resolver.addRoutePolicy("prog-jwt",
+                        List.of("/prog/**"), null, AuthMode.JWT);
+            }
+        }
+
+        @TestConfiguration(proxyBeanMethods = false)
+        static class CustomizerAddsHmacRoute {
+            @Bean
+            GatewaySecurityPolicyCustomizer hmacCustomizer() {
+                return resolver -> resolver.addRoutePolicy("prog-hmac",
+                        List.of("/prog/**"), null, AuthMode.HMAC);
+            }
+        }
+
+        @TestConfiguration(proxyBeanMethods = false)
+        static class CustomizerAddsJwtOrHmacRoute {
+            @Bean
+            GatewaySecurityPolicyCustomizer dualCustomizer() {
+                return resolver -> resolver.addRoutePolicy("prog-dual",
+                        List.of("/prog/**"), null, AuthMode.JWT_OR_HMAC);
+            }
         }
     }
 }

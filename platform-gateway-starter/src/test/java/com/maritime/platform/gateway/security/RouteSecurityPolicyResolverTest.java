@@ -285,6 +285,7 @@ class RouteSecurityPolicyResolverTest {
 		@DisplayName("customizer can add route policies")
 		void customizerAddsRoutePolicy() {
 			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.NONE);
+			props.getHmac().setEnabled(true);
 			List<GatewaySecurityPolicyCustomizer> customizers = List.of(resolver -> {
 				resolver.addRoutePolicy("custom-route", List.of("/custom/**"),
 						List.of("POST"), AuthMode.HMAC);
@@ -365,6 +366,92 @@ class RouteSecurityPolicyResolverTest {
 						.hasMessageContaining("must not be null");
 			});
 			resolveWithCustomizers(props, "/other", "GET", customizers);
+		}
+
+		@Test
+		@DisplayName("programmatic JWT route fails when jwt.enabled=false")
+		void programmaticJwtRouteFailsWithoutJwtEnabled() {
+			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.NONE);
+			// jwt.enabled is false by default
+			List<GatewaySecurityPolicyCustomizer> customizers = List.of(resolver -> {
+				assertThatThrownBy(() -> resolver.addRoutePolicy("prog-jwt",
+						List.of("/prog/**"), null, AuthMode.JWT))
+						.isInstanceOf(IllegalArgumentException.class)
+						.hasMessageContaining("programmatic route")
+						.hasMessageContaining("prog-jwt")
+						.hasMessageContaining("JWT")
+						.hasMessageContaining("jwt.enabled");
+			});
+			resolveWithCustomizers(props, "/other", "GET", customizers);
+		}
+
+		@Test
+		@DisplayName("programmatic HMAC route fails when hmac.enabled=false")
+		void programmaticHmacRouteFailsWithoutHmacEnabled() {
+			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.NONE);
+			// hmac.enabled is false by default
+			List<GatewaySecurityPolicyCustomizer> customizers = List.of(resolver -> {
+				assertThatThrownBy(() -> resolver.addRoutePolicy("prog-hmac",
+						List.of("/prog/**"), null, AuthMode.HMAC))
+						.isInstanceOf(IllegalArgumentException.class)
+						.hasMessageContaining("programmatic route")
+						.hasMessageContaining("prog-hmac")
+						.hasMessageContaining("HMAC")
+						.hasMessageContaining("hmac.enabled");
+			});
+			resolveWithCustomizers(props, "/other", "GET", customizers);
+		}
+
+		@Test
+		@DisplayName("programmatic JWT_OR_HMAC route fails when only jwt enabled")
+		void programmaticJwtOrHmacRouteFailsWithOnlyJwtEnabled() {
+			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.NONE);
+			props.getJwt().setEnabled(true);
+			props.getJwt().setSecret("test");
+			props.getJwt().setIssuer("test");
+			// hmac.enabled is still false
+			List<GatewaySecurityPolicyCustomizer> customizers = List.of(resolver -> {
+				assertThatThrownBy(() -> resolver.addRoutePolicy("prog-dual",
+						List.of("/prog/**"), null, AuthMode.JWT_OR_HMAC))
+						.isInstanceOf(IllegalArgumentException.class)
+						.hasMessageContaining("programmatic route")
+						.hasMessageContaining("prog-dual")
+						.hasMessageContaining("JWT_OR_HMAC")
+						.hasMessageContaining("hmac.enabled");
+			});
+			resolveWithCustomizers(props, "/other", "GET", customizers);
+		}
+
+		@Test
+		@DisplayName("programmatic JWT_OR_HMAC route fails when only hmac enabled")
+		void programmaticJwtOrHmacRouteFailsWithOnlyHmacEnabled() {
+			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.NONE);
+			props.getHmac().setEnabled(true);
+			// jwt.enabled is still false
+			List<GatewaySecurityPolicyCustomizer> customizers = List.of(resolver -> {
+				assertThatThrownBy(() -> resolver.addRoutePolicy("prog-dual",
+						List.of("/prog/**"), null, AuthMode.JWT_OR_HMAC))
+						.isInstanceOf(IllegalArgumentException.class)
+						.hasMessageContaining("programmatic route")
+						.hasMessageContaining("prog-dual")
+						.hasMessageContaining("JWT_OR_HMAC")
+						.hasMessageContaining("jwt.enabled");
+			});
+			resolveWithCustomizers(props, "/other", "GET", customizers);
+		}
+
+		@Test
+		@DisplayName("programmatic NONE route succeeds regardless of enabled flags")
+		void programmaticNoneRouteSucceedsWithoutEnabledFlags() {
+			GatewaySecurityProperties props = propertiesWithDefault(AuthMode.JWT);
+			List<GatewaySecurityPolicyCustomizer> customizers = List.of(resolver -> {
+				resolver.addRoutePolicy("prog-none", List.of("/public/**"), null, AuthMode.NONE);
+			});
+
+			RouteSecurityPolicy result = resolveWithCustomizers(props, "/public/data", "GET", customizers);
+
+			assertThat(result.getAuthMode()).isEqualTo(AuthMode.NONE);
+			assertThat(result.getMatchedRuleId()).isEqualTo("prog-none");
 		}
 	}
 

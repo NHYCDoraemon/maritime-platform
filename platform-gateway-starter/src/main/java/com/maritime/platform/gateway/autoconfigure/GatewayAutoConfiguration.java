@@ -11,7 +11,10 @@ import org.springframework.context.annotation.ComponentScan;
 
 @AutoConfiguration(before = org.springframework.cloud.gateway.config.GatewayAutoConfiguration.class)
 @ConditionalOnClass(name = "org.springframework.cloud.gateway.config.GatewayAutoConfiguration")
-@ComponentScan(basePackages = "com.maritime.platform.gateway")
+@ComponentScan(basePackages = {
+		"com.maritime.platform.gateway.filter",
+		"com.maritime.platform.gateway.security"
+})
 public class GatewayAutoConfiguration {
 
 	@Bean
