@@ -23,7 +23,10 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @DisplayName("HmacAuthenticationManager tests")
@@ -298,6 +301,7 @@ class HmacAuthenticationManagerTest {
 					.thenReturn(Mono.error(new JwtAuthenticationException(
 							GatewayAuthErrorCode.REPLAY_DETECTED,
 							"Nonce already used: " + nonce)));
+			stubCredentialOk();
 
 			StepVerifier.create(manager().authenticate(APP_KEY, timestamp, nonce,
 							bodyDigest, signature, "POST", "/api/data", null, body))
@@ -316,7 +320,7 @@ class HmacAuthenticationManagerTest {
 	class BodyDigestValidation {
 
 		@Test
-		@DisplayName("mismatched body digest returns INVALID_SIGNATURE")
+		@DisplayName("mismatched body digest returns INVALID_SIGNATURE and never calls nonce validator")
 		void mismatchedBodyDigestReturnsInvalidSignature() {
 			String timestamp = validTimestamp();
 			String nonce = "nonce-0123456789abcdef";
@@ -331,6 +335,8 @@ class HmacAuthenticationManagerTest {
 								.isInstanceOf(JwtAuthenticationException.class)
 								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.INVALID_SIGNATURE);
 					});
+
+			verify(nonceValidator, never()).validate(anyString(), anyString());
 		}
 	}
 
@@ -341,14 +347,13 @@ class HmacAuthenticationManagerTest {
 	class SignatureValidation {
 
 		@Test
-		@DisplayName("wrong signature returns INVALID_SIGNATURE")
+		@DisplayName("wrong signature returns INVALID_SIGNATURE and never calls nonce validator")
 		void wrongSignatureReturnsInvalidSignature() {
 			String timestamp = validTimestamp();
 			String nonce = "nonce-0123456789abcdef";
 			byte[] body = new byte[0];
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
 
-			stubNonceOk(APP_KEY, nonce);
 			stubCredentialOk();
 
 			StepVerifier.create(manager().authenticate(APP_KEY, timestamp, nonce,
@@ -359,10 +364,12 @@ class HmacAuthenticationManagerTest {
 								.isInstanceOf(JwtAuthenticationException.class)
 								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.INVALID_SIGNATURE);
 					});
+
+			verify(nonceValidator, never()).validate(anyString(), anyString());
 		}
 
 		@Test
-		@DisplayName("unknown app key returns UNKNOWN_APP from resolver")
+		@DisplayName("unknown app key returns UNKNOWN_APP from resolver and never calls nonce validator")
 		void unknownAppKey() {
 			String timestamp = validTimestamp();
 			String nonce = "nonce-0123456789abcdef";
@@ -370,8 +377,6 @@ class HmacAuthenticationManagerTest {
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
 			String signature = sign(timestamp, nonce, body);
 
-			when(nonceValidator.validate(eq("unknown-app"), eq(nonce)))
-					.thenReturn(Mono.empty());
 			when(credentialResolver.resolve(eq("unknown-app")))
 					.thenReturn(Mono.error(new JwtAuthenticationException(
 							GatewayAuthErrorCode.UNKNOWN_APP,
@@ -385,10 +390,12 @@ class HmacAuthenticationManagerTest {
 								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.UNKNOWN_APP);
 						assertThat(e.getMessage()).contains("Unknown app key");
 					});
+
+			verify(nonceValidator, never()).validate(anyString(), anyString());
 		}
 
 		@Test
-		@DisplayName("signature for different path does not match")
+		@DisplayName("signature for different path does not match and never calls nonce validator")
 		void signatureForDifferentPathFails() {
 			String timestamp = validTimestamp();
 			String nonce = "nonce-0123456789abcdef";
@@ -396,7 +403,6 @@ class HmacAuthenticationManagerTest {
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
 			String signature = sign(timestamp, nonce, body);
 
-			stubNonceOk(APP_KEY, nonce);
 			stubCredentialOk();
 
 			StepVerifier.create(manager().authenticate(APP_KEY, timestamp, nonce,
@@ -406,6 +412,8 @@ class HmacAuthenticationManagerTest {
 								.isInstanceOf(JwtAuthenticationException.class)
 								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.INVALID_SIGNATURE);
 					});
+
+			verify(nonceValidator, never()).validate(anyString(), anyString());
 		}
 
 		@Test
@@ -453,15 +461,13 @@ class HmacAuthenticationManagerTest {
 		}
 
 		@Test
-		@DisplayName("disabled app returns APP_DISABLED from resolver")
+		@DisplayName("disabled app returns APP_DISABLED from resolver and never calls nonce validator")
 		void disabledAppReturnsAppDisabled() {
 			String timestamp = validTimestamp();
 			String nonce = "nonce-0123456789abcdef";
 			byte[] body = new byte[0];
 			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
 
-			when(nonceValidator.validate(eq("disabled-app"), eq(nonce)))
-					.thenReturn(Mono.empty());
 			when(credentialResolver.resolve(eq("disabled-app")))
 					.thenReturn(Mono.error(new JwtAuthenticationException(
 							GatewayAuthErrorCode.APP_DISABLED,
@@ -474,6 +480,37 @@ class HmacAuthenticationManagerTest {
 								.isInstanceOf(JwtAuthenticationException.class)
 								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.APP_DISABLED);
 					});
+
+			verify(nonceValidator, never()).validate(anyString(), anyString());
+		}
+
+		@Test
+		@DisplayName("missing appSecret returns INVALID_SIGNATURE and never calls nonce validator")
+		void missingAppSecretReturnsInvalidSignature() {
+			AppCredential noSecretCred = AppCredential.builder()
+					.appKey("no-secret-app")
+					.appCode("secretless")
+					.enabled(true)
+					.build();
+
+			String timestamp = validTimestamp();
+			String nonce = "nonce-0123456789abcdef";
+			byte[] body = new byte[0];
+			String bodyDigest = HmacAuthenticationManager.sha256Hex(body);
+
+			when(credentialResolver.resolve(eq("no-secret-app")))
+					.thenReturn(Mono.just(noSecretCred));
+
+			StepVerifier.create(manager().authenticate("no-secret-app", timestamp, nonce,
+							bodyDigest, "any-signature", "POST", "/api/data", null, body))
+					.verifyErrorSatisfies(e -> {
+						assertThat(e)
+								.isInstanceOf(JwtAuthenticationException.class)
+								.extracting("errorCode").isEqualTo(GatewayAuthErrorCode.INVALID_SIGNATURE);
+						assertThat(e.getMessage()).contains("App secret is missing");
+					});
+
+			verify(nonceValidator, never()).validate(anyString(), anyString());
 		}
 	}
 }

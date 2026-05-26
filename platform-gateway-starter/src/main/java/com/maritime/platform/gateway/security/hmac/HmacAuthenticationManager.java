@@ -27,10 +27,10 @@ import java.util.HexFormat;
  *   <li>Validate timestamp is within the configured tolerance window</li>
  *   <li>Validate nonce length meets the configured minimum</li>
  *   <li>Compute SHA-256 of the request body and compare with client digest (constant-time)</li>
- *   <li>Check nonce has not been replayed via Redis SETNX</li>
- *   <li>Resolve the app credential via {@link AppCredentialResolver}</li>
+ *   <li>Resolve the app credential via {@link AppCredentialResolver} and verify appSecret is present</li>
  *   <li>Build the canonical request string and compute HMAC-SHA256</li>
  *   <li>Compare computed signature with client signature (constant-time)</li>
+ *   <li>Check nonce has not been replayed via Redis SETNX (only after credential and signature pass)</li>
  * </ol>
  */
 @Component
@@ -118,11 +118,17 @@ public class HmacAuthenticationManager {
 					"Body digest does not match"));
 		}
 
-		// 4. Validate nonce (Redis SETNX), then resolve credential
-		return nonceValidator.validate(appKey, nonce)
-				.then(Mono.defer(() -> credentialResolver.resolve(appKey)))
+		// 4. Resolve credential and check app availability
+		return credentialResolver.resolve(appKey)
 				.flatMap(credential -> {
-					// 5. Build canonical string and compute signature
+					// 5. Fail closed if appSecret is missing
+					if (credential.getAppSecret() == null || credential.getAppSecret().isEmpty()) {
+						return Mono.error(new JwtAuthenticationException(
+								GatewayAuthErrorCode.INVALID_SIGNATURE,
+								"App secret is missing for app: " + appKey));
+					}
+
+					// 6. Build canonical string and compute signature
 					String canonical = canonicalBuilder.build(appKey, method, rawPath,
 							rawQuery, timestamp, nonce, clientDigest);
 
@@ -133,13 +139,15 @@ public class HmacAuthenticationManager {
 								"Signature does not match"));
 					}
 
-					String appCode = credential.getAppCode() != null ? credential.getAppCode() : appKey;
-					return Mono.just(new GatewayPrincipal.App(
-							appKey, appCode,
-							credential.getAppId(),
-							credential.getTenantId(),
-							credential.getTenantCode(),
-							credential.getPermissions()));
+					// 7. Validate nonce (Redis SETNX) — only after signature is verified
+					return nonceValidator.validate(appKey, nonce)
+							.then(Mono.just(new GatewayPrincipal.App(
+									appKey,
+									credential.getAppCode() != null ? credential.getAppCode() : appKey,
+									credential.getAppId(),
+									credential.getTenantId(),
+									credential.getTenantCode(),
+									credential.getPermissions())));
 				});
 	}
 
