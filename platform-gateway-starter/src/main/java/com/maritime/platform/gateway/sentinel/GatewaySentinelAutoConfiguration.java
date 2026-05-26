@@ -18,6 +18,7 @@ import org.springframework.web.reactive.function.server.ServerResponse;
 
 import jakarta.annotation.PostConstruct;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @AutoConfiguration
@@ -38,10 +39,10 @@ public class GatewaySentinelAutoConfiguration {
     @PostConstruct
     public void init() {
         BlockRequestHandler blockRequestHandler = (exchange, t) -> {
-            Map<String, Object> body = Map.of(
-                    "code", HttpStatus.TOO_MANY_REQUESTS.value(),
-                    "message", "FLOW_LIMITING",
-                    "data", null);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("code", HttpStatus.TOO_MANY_REQUESTS.value());
+            body.put("message", "FLOW_LIMITING");
+            body.put("data", null);
             return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(body);
