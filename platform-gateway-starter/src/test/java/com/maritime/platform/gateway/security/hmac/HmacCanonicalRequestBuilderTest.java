@@ -16,19 +16,20 @@ class HmacCanonicalRequestBuilderTest {
 	class CanonicalStringFormat {
 
 		@Test
-		@DisplayName("all components appear in correct order with linefeed separators")
+		@DisplayName("all components appear in correct order with field name labels and linefeed separators")
 		void allComponentsInOrder() {
 			String result = builder.build("app-123", "POST", "/api/data",
 					"b=2&a=1", "1700000000000", "nonce-abcdefghijklmnop", "abc123");
 
 			String[] lines = result.split("\n");
 			assertThat(lines).hasSize(7);
-			assertThat(lines[0]).isEqualTo("app-123");
-			assertThat(lines[1]).isEqualTo("POST");
-			assertThat(lines[2]).isEqualTo("/api/data");
-			assertThat(lines[4]).isEqualTo("1700000000000");
-			assertThat(lines[5]).isEqualTo("nonce-abcdefghijklmnop");
-			assertThat(lines[6]).isEqualTo("abc123");
+			assertThat(lines[0]).isEqualTo("appKey=app-123");
+			assertThat(lines[1]).isEqualTo("method=POST");
+			assertThat(lines[2]).isEqualTo("path=/api/data");
+			assertThat(lines[3]).isEqualTo("query=a=1&b=2");
+			assertThat(lines[4]).isEqualTo("timestamp=1700000000000");
+			assertThat(lines[5]).isEqualTo("nonce=nonce-abcdefghijklmnop");
+			assertThat(lines[6]).isEqualTo("bodyDigest=abc123");
 		}
 
 		@Test
@@ -36,16 +37,15 @@ class HmacCanonicalRequestBuilderTest {
 		void methodIsUppercase() {
 			String result = builder.build("app", "get", "/path", null,
 					"1", "n", "d");
-			assertThat(result).contains("\nget\n".toUpperCase());
+			assertThat(result).contains("method=GET");
 		}
 
 		@Test
-		@DisplayName("null rawPath produces empty line")
+		@DisplayName("null rawPath produces empty path value")
 		void nullRawPathProducesEmpty() {
 			String result = builder.build("app", "GET", null, null,
 					"1", "n", "d");
-			String[] lines = result.split("\n");
-			assertThat(lines[2]).isEmpty();
+			assertThat(result).contains("path=\n");
 		}
 
 		@Test

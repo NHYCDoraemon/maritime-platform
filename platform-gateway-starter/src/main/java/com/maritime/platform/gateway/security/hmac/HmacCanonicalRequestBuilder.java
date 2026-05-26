@@ -14,17 +14,20 @@ import java.util.stream.Collectors;
 /**
  * Builds the canonical string used for HMAC signature computation.
  *
- * <p>The canonical form is linefeed-delimited:
+ * <p>The canonical form is linefeed-delimited with field name labels:
  * <pre>
- * {appKey}
- * {METHOD}
- * {rawPath}
- * {canonicalQuery}
- * {timestamp}
- * {nonce}
- * {bodyDigest}
+ * appKey={appKey}
+ * method={HTTP_METHOD}
+ * path={rawPath}
+ * query={canonicalQuery}
+ * timestamp={timestamp}
+ * nonce={nonce}
+ * bodyDigest={sha256Hex(body)}
  * </pre>
  * Query parameters in canonicalQuery are sorted by key then value.
+ * Values are URL-encoded (space as {@code %20}, not {@code +}).
+ * Timestamp is epoch millis. bodyDigest is SHA-256 hex of the raw request body.
+ * The final signature is {@code HMAC-SHA256(appSecret, canonicalString)} as lowercase hex.
  */
 @Component
 @ConditionalOnProperty("maritime.gateway.security.hmac.enabled")
@@ -35,13 +38,13 @@ public class HmacCanonicalRequestBuilder {
 	public String build(String appKey, String method, String rawPath, String rawQuery,
 			String timestamp, String nonce, String bodyDigest) {
 		StringBuilder sb = new StringBuilder(512);
-		sb.append(appKey).append(LF);
-		sb.append(method.toUpperCase()).append(LF);
-		sb.append(rawPath != null ? rawPath : "").append(LF);
-		sb.append(canonicalizeQuery(rawQuery)).append(LF);
-		sb.append(timestamp).append(LF);
-		sb.append(nonce).append(LF);
-		sb.append(bodyDigest);
+		sb.append("appKey=").append(appKey).append(LF);
+		sb.append("method=").append(method.toUpperCase()).append(LF);
+		sb.append("path=").append(rawPath != null ? rawPath : "").append(LF);
+		sb.append("query=").append(canonicalizeQuery(rawQuery)).append(LF);
+		sb.append("timestamp=").append(timestamp).append(LF);
+		sb.append("nonce=").append(nonce).append(LF);
+		sb.append("bodyDigest=").append(bodyDigest);
 		return sb.toString();
 	}
 

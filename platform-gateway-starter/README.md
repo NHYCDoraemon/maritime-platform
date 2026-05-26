@@ -130,6 +130,76 @@ jwt:
 
 签名 base string 为换行符连接的规范请求（由 starter 内部构建），密钥为 `appSecret`。
 
+### HMAC 签名算法
+
+调用方按以下规则构造 canonical string 并使用 `appSecret` 签名：
+
+**Canonical string 格式（7 行，换行符 `\n` 分隔）：**
+
+```text
+appKey={appKey}
+method={HTTP_METHOD}
+path={rawPath}
+query={canonicalQuery}
+timestamp={timestamp}
+nonce={nonce}
+bodyDigest={sha256Hex(body)}
+```
+
+**各字段规则：**
+
+| 字段 | 规则 |
+|------|------|
+| `appKey` | `X-App-Key` header 值 |
+| `method` | HTTP 方法，**大写**（如 `GET`、`POST`） |
+| `path` | 原始 URI path（不含 query string），如 `/api/data`。无 path 时为空行值 |
+| `query` | **按 key 字典序排序**，值 **URL-encode**（空格编码为 `%20`，非 `+`）。无 query 时为空行值 |
+| `timestamp` | `X-Timestamp` header 值，**epoch 毫秒**字符串（如 `1700000000000`） |
+| `nonce` | `X-Nonce` header 值，最短 16 字符 |
+| `bodyDigest` | 请求体原始字节的 **SHA-256 小写 hex**（无 body 时为空字节数组的 SHA-256） |
+
+**签名计算：**
+
+```text
+signature = HMAC-SHA256(appSecret, canonicalString)  输出为小写 hex
+```
+
+> **⚠️ 签名契约不兼容：** `platform-common-core` 中的 `HmacSignatureValidator` 使用旧格式 `systemCode=...&timestamp=...&nonce=...&bodyDigest=...`，与 gateway starter v2 **不兼容**。旧 helper 仅供历史系统（如 `iam-sdk` 的 `HmacSignatureGenerator`）内部使用。对 gateway starter 的 HMAC 认证，必须按本文档的 7 行带字段名格式签名。需要同时对接新老格式的系统应显式使用不同的 helper 或 `legacy` 模式，不可静默混用。
+
+**可复现签名示例：**
+
+```text
+appKey    = demo-app
+appSecret = demo-secret
+method    = POST
+path      = /api/echo
+query     = b=2&a=1          → canonicalQuery = a=1&b=2
+timestamp = 1700000000000
+nonce     = nonce0123456789ab
+body      = (empty)
+bodyDigest = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
+Canonical string：
+
+```text
+appKey=demo-app
+method=POST
+path=/api/echo
+query=a=1&b=2
+timestamp=1700000000000
+nonce=nonce0123456789ab
+bodyDigest=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
+调用方用 `demo-secret` 对以上 canonical string 做 HMAC-SHA256 得到签名：
+
+```text
+signature = 45d65010145d3d035a883a6ebf2d33f8c0d20cfb95e2060402110aa1255f0da9
+```
+
+调用方可用标准工具（如 `openssl dgst -sha256 -hmac demo-secret`）自行验算 canonical string 与签名结果。
+
 > **自定义 header 名称：** 五个 HMAC 入站 header 均可通过配置改为自定义名称，例如 `hmac.headers.app-key=X-App-Code`。自定义名称在认证前会被 `UntrustedHeaderStripFilter` 保留，认证后由 `HmacAuthenticationGatewayFilter` 移除，上下文注入阶段再由 `ContextHeaderInjectionFilter` 写入已验证的值。同名 header 的生命周期是：客户端原始值 → 网关认证读取 → 网关移除 → 网关注入已验证值。
 
 ### 服务端校验链

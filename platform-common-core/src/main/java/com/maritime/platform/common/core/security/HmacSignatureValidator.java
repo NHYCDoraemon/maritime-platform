@@ -8,11 +8,20 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * Utility for computing and verifying HMAC-SHA256 request signatures.
+ * <strong>LEGACY</strong> — HMAC-SHA256 signature validator for historical service-to-service calls.
  *
- * <p>Used by the gateway to validate service-to-service calls from
- * business systems. Business systems sign requests with their
- * {@code systemSecret}; the gateway verifies before forwarding.
+ * <p><strong>Compatibility note:</strong> this helper uses the old canonical string format
+ * {@code systemCode=...&timestamp=...&nonce=...&bodyDigest=...} which is
+ * <strong>NOT compatible</strong> with the {@code platform-gateway-starter} HMAC authentication.
+ * The gateway starter uses a 7-line key-labeled format with method/path/query fields
+ * (see {@code platform-gateway-starter/README.md}). The two formats produce different
+ * signatures for the same inputs; do not silently mix them.
+ *
+ * <p>This class is kept for backward compatibility with existing consumers such as
+ * {@code iam-sdk}'s {@code HmacSignatureGenerator}. New service-to-service integrations
+ * should follow the gateway starter signature contract. If a single codebase needs to
+ * support both formats, add an explicit {@code legacy} mode or a separate helper —
+ * do not attempt to auto-detect the format.
  *
  * <p>Signature headers:
  * <ul>
@@ -23,7 +32,7 @@ import javax.crypto.spec.SecretKeySpec;
  *   <li>{@code X-Signature} — HMAC-SHA256 hex of canonical string</li>
  * </ul>
  *
- * <p>Canonical signing string:
+ * <p>Canonical signing string (legacy format):
  * <pre>systemCode={X-App-Code}&amp;timestamp={X-Timestamp}&amp;nonce={X-Nonce}&amp;bodyDigest={X-Body-Digest}</pre>
  */
 public final class HmacSignatureValidator {

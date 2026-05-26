@@ -17,6 +17,7 @@ Shared platform commons + iam-sdk for maritime microservices.
 | `platform-common-notification` | Channel enum, NotificationDispatcher SPI, handler registry |
 | `platform-common-feign` | Feign client interfaces and shared DTOs for IAM intra-cluster calls |
 | `platform-common-tenant` | Tenant context ThreadLocal + @RequireTenantContext AOP |
+| `platform-gateway-starter` | Spring Cloud Gateway starter — JWT/HMAC auth, nonce replay protection, trusted header lifecycle, trace ID, rate limiting |
 | `iam-sdk` | IAM SDK Spring Boot Starter for business system integration |
 
 ## Usage
