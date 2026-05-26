@@ -96,10 +96,10 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 								ServerHttpRequest stripped = stripHmacHeaders(
 										cachedExchange.getRequest(), hdrs, exchange);
 								return chain.filter(cachedExchange.mutate().request(stripped).build());
-							})
-							.onErrorResume(JwtAuthenticationException.class,
-									e -> errorWriter.write(cachedExchange, e.getErrorCode()));
-				});
+							});
+				})
+				.onErrorResume(JwtAuthenticationException.class,
+						e -> errorWriter.write(exchange, e.getErrorCode()));
 	}
 
 	@Override
@@ -154,8 +154,15 @@ public class HmacAuthenticationGatewayFilter implements GlobalFilter, Ordered {
 	 * whose request body can be re-read by downstream filters and handlers.
 	 */
 	private Mono<ServerWebExchange> readAndCacheBody(ServerWebExchange exchange) {
+		int maxBodyBytes = properties.getHmac().getMaxBodyBytes();
 		return DataBufferUtils.join(exchange.getRequest().getBody())
 				.map(buf -> {
+					if (buf.readableByteCount() > maxBodyBytes) {
+						DataBufferUtils.release(buf);
+						throw new JwtAuthenticationException(
+								GatewayAuthErrorCode.BODY_TOO_LARGE,
+								"Request body exceeds maximum size of " + maxBodyBytes + " bytes");
+					}
 					byte[] bytes = new byte[buf.readableByteCount()];
 					buf.read(bytes);
 					DataBufferUtils.release(buf);

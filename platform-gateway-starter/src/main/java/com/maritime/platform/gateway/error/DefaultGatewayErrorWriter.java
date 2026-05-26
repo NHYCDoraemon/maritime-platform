@@ -42,6 +42,9 @@ public class DefaultGatewayErrorWriter implements GatewayErrorWriter {
 		if ("UNSUPPORTED_AUTH_MODE".equals(errorCode)) {
 			return HttpStatus.NOT_IMPLEMENTED;
 		}
+		if ("BODY_TOO_LARGE".equals(errorCode)) {
+			return HttpStatus.PAYLOAD_TOO_LARGE;
+		}
 		return HttpStatus.UNAUTHORIZED;
 	}
 

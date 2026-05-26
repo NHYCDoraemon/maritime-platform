@@ -207,11 +207,14 @@ signature = 45d65010145d3d035a883a6ebf2d33f8c0d20cfb95e2060402110aa1255f0da9
 1. 检查 header 完整性 → 缺失返回 `MISSING_HMAC_HEADERS`
 2. 校验时间戳在容忍窗口内 → 超时返回 `TIMESTAMP_EXPIRED`
 3. 校验 nonce 长度 ≥ 16（可配）→ 过短返回 `INVALID_SIGNATURE`
-4. 对比 body digest → 不匹配返回 `INVALID_SIGNATURE`
-5. nonce 防重放（Redis SETNX）→ 重复返回 `REPLAY_DETECTED`
+4. 检查请求体大小是否在缓存限制内 → 超过返回 `BODY_TOO_LARGE`
+5. 对比 body digest → 不匹配返回 `INVALID_SIGNATURE`
 6. 查找 app credential（Redis 优先，config fallback）→ 未找到返回 `UNKNOWN_APP`
-7. 检查 app 启用状态 → 禁用返回 `APP_DISABLED`
-8. 验证 HMAC 签名 → 失败返回 `INVALID_SIGNATURE`
+7. 检查 appSecret 是否存在 → 缺失返回 `INVALID_SIGNATURE`
+8. 构造 canonical string 并验证 HMAC 签名 → 失败返回 `INVALID_SIGNATURE`
+9. nonce 防重放（Redis SETNX）***仅在前序步骤全部通过后*** → 重复返回 `REPLAY_DETECTED`
+
+> **顺序说明：** nonce 提交（Redis SETNX）放在 credential lookup、appSecret 校验、canonical string 和签名校验通过之后。如果签名本身是伪造的，我们不会消费 nonce，避免攻击者消耗 Redis nonce 空间。
 
 ### App Credential 配置
 
@@ -225,6 +228,28 @@ hmac:
         app-secret: <shared-secret>
         app-code: MY_SYS
 ```
+
+### 请求体大小限制
+
+HMAC 认证需要读取请求体以计算 SHA-256 digest，为防止大请求体导致内存耗尽，starter 对缓存请求体设置了硬上限：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `maritime.gateway.security.hmac.max-body-bytes` | `65536`（64 KiB） | 允许缓存的最大请求体字节数 |
+
+超过此限制的请求直接返回 `413` + `BODY_TOO_LARGE` 错误，不会转发下游，也不会调用 HMAC 认证管理器。
+
+**调整方式：**
+
+```yaml
+maritime:
+  gateway:
+    security:
+      hmac:
+        max-body-bytes: 262144   # 256 KiB
+```
+
+> `max-body-bytes` 必须 ≥ 1。此限制仅在 HMAC 认证路径中对需要 body digest 的请求生效；JWT 路径和 public path 不受此限制。大多数系统间 HMAC 调用的 payload 远小于 64 KiB，默认值适用大部分场景。
 
 ## Header 清理与注入
 
@@ -335,6 +360,7 @@ X-App-Permissions                  (List → 逗号拼接)
 | `USER_DISABLED` | 401 | 用户被禁用 |
 | `NONCE_REQUIRED` | 401 | 写请求缺少 X-Nonce |
 | `REPLAY_DETECTED` | 401 | nonce 重复（JWT 或 HMAC） |
+| `BODY_TOO_LARGE` | 413 | HMAC 请求体超过缓存限制 |
 | `MISSING_HMAC_HEADERS` | 401 | HMAC header 缺失 |
 | `TIMESTAMP_EXPIRED` | 401 | 时间戳超出容忍窗口 |
 | `INVALID_SIGNATURE` | 401 | HMAC 签名/body digest/哈希不匹配 |

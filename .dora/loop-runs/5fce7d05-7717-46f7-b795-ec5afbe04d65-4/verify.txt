@@ -1,0 +1,4 @@
+verification: pass
+  - rc=0 ok: java -version
+  - rc=0 ok: mvn -pl platform-gateway-starter -Dtest=HmacAuthenticationGatewayFilterTest,HmacAuthenticationManagerTest test
+  - rc=0 ok: mvn -pl platform-gateway-starter -am test

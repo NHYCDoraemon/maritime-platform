@@ -285,6 +285,9 @@ public class GatewaySecurityProperties implements InitializingBean {
         @Valid
         private Headers headers = new Headers();
 
+        @Min(1)
+        private int maxBodyBytes = 65536;
+
         @Valid
         private Credentials credentials = new Credentials();
 
@@ -298,6 +301,8 @@ public class GatewaySecurityProperties implements InitializingBean {
         public void setNonceKeyPrefix(String nonceKeyPrefix) { this.nonceKeyPrefix = nonceKeyPrefix; }
         public Duration getNonceTtl() { return nonceTtl; }
         public void setNonceTtl(Duration nonceTtl) { this.nonceTtl = nonceTtl; }
+        public int getMaxBodyBytes() { return maxBodyBytes; }
+        public void setMaxBodyBytes(int maxBodyBytes) { this.maxBodyBytes = maxBodyBytes; }
         public Headers getHeaders() { return headers; }
         public void setHeaders(Headers headers) { this.headers = headers; }
         public Credentials getCredentials() { return credentials; }

@@ -703,6 +703,53 @@ class HmacAuthenticationGatewayFilterTest {
 		}
 	}
 
+	// ---------- body size limit ----------
+
+	@Nested
+	@DisplayName("Body size limit")
+	class BodySizeLimit {
+
+		@Test
+		@DisplayName("body exceeding maxBodyBytes returns BODY_TOO_LARGE and does not forward downstream")
+		void oversizedBodyRejected() {
+			int oversizedLen = properties.getHmac().getMaxBodyBytes() + 1;
+			String largeBody = "x".repeat(oversizedLen);
+
+			MockServerWebExchange exchange = exchangeWithBody("POST", "/api/data", largeBody);
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			// Body should be rejected before auth manager is ever called;
+			// no mock needed — chain will never be invoked.
+
+			StepVerifier.create(filter().filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			assertThat(captured.get()).isNull();
+		}
+
+		@Test
+		@DisplayName("body at exactly maxBodyBytes still passes through to auth manager")
+		void bodyAtMaxLimitPasses() {
+			int maxBodyBytes = properties.getHmac().getMaxBodyBytes();
+			String maxBody = "x".repeat(maxBodyBytes);
+
+			MockServerWebExchange exchange = exchangeWithBody("POST", "/api/data", maxBody);
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			GatewayPrincipal.App expectedPrincipal = testAppPrincipal();
+			when(authManager.authenticate(any(), any(), any(),
+					any(), any(), any(), any(), any(), any()))
+					.thenReturn(Mono.just(expectedPrincipal));
+
+			StepVerifier.create(filter().filter(exchange, capturingChain(captured)))
+					.verifyComplete();
+
+			GatewayPrincipal.App principal = captured.get().getAttribute(GatewayPrincipal.ATTRIBUTE);
+			assertThat(principal).isNotNull();
+			assertThat(principal.appKey()).isEqualTo(APP_KEY);
+		}
+	}
+
 	// ---------- error response format ----------
 
 	@Nested
