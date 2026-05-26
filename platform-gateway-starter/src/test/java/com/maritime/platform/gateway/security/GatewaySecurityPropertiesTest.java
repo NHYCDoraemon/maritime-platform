@@ -37,25 +37,14 @@ class GatewaySecurityPropertiesTest {
     class Defaults {
 
         @Test
-        @DisplayName("can start with no properties set")
-        void startsWithDefaults() {
+        @DisplayName("fails with no properties because default-auth-mode=jwt requires jwt.enabled=true")
+        void defaultsFailBecauseJwtDisabled() {
             runner.run(ctx -> {
-                GatewaySecurityProperties props = ctx.getBean(GatewaySecurityProperties.class);
-
-                assertThat(props.getDefaultAuthMode()).isEqualTo(AuthMode.JWT);
-                assertThat(props.getPublicPaths()).isEmpty();
-                assertThat(props.getRoutes()).isEmpty();
-
-                assertThat(props.getJwt().isEnabled()).isFalse();
-                assertThat(props.getJwt().getSecret()).isNull();
-                assertThat(props.getJwt().isEncrypted()).isFalse();
-                assertThat(props.getJwt().getIssuer()).isEmpty();
-                assertThat(props.getJwt().getClockSkewSeconds()).isEqualTo(30);
-
-                assertThat(props.getHmac().isEnabled()).isFalse();
-                assertThat(props.getHmac().getTimestampTolerance()).isEqualTo(Duration.ofMinutes(5));
-                assertThat(props.getHmac().getMinNonceLength()).isEqualTo(16);
-                assertThat(props.getHmac().getNonceTtl()).isEqualTo(Duration.ofMinutes(5));
+                assertThat(ctx).getFailure().isNotNull();
+                assertThat(ctx.getStartupFailure())
+                        .hasMessageContaining("default-auth-mode")
+                        .hasMessageContaining("JWT")
+                        .hasMessageContaining("jwt.enabled");
             });
         }
 
@@ -444,10 +433,130 @@ class GatewaySecurityPropertiesTest {
         }
 
         @Test
-        @DisplayName("JWT disabled passes validation regardless of other fields")
-        void jwtDisabledPassesValidation() {
+        @DisplayName("JWT disabled with default-auth-mode=JWT fails (fail-closed)")
+        void jwtDisabledWithDefaultJwtFails() {
             var props = new GatewaySecurityProperties();
-            // JWT disabled by default, secret is null
+            // defaultAuthMode=JWT but jwt.enabled=false
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("default-auth-mode")
+                    .hasMessageContaining("JWT")
+                    .hasMessageContaining("jwt.enabled");
+        }
+
+        @Test
+        @DisplayName("default-auth-mode=NONE with neither JWT nor HMAC enabled succeeds")
+        void defaultAuthModeNoneWithoutFiltersEnabledSucceeds() {
+            var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.NONE);
+            props.afterPropertiesSet(); // should not throw
+        }
+
+        @Test
+        @DisplayName("default-auth-mode=HMAC without hmac.enabled fails")
+        void defaultAuthModeHmacWithoutEnabledFails() {
+            var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.HMAC);
+            // hmac.enabled is false by default
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("default-auth-mode")
+                    .hasMessageContaining("HMAC")
+                    .hasMessageContaining("hmac.enabled");
+        }
+
+        @Test
+        @DisplayName("default-auth-mode=JWT_OR_HMAC without JWT enabled fails")
+        void defaultAuthModeJwtOrHmacWithoutJwtEnabledFails() {
+            var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.JWT_OR_HMAC);
+            props.getHmac().setEnabled(true);
+            // jwt.enabled is false
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("default-auth-mode")
+                    .hasMessageContaining("JWT_OR_HMAC")
+                    .hasMessageContaining("jwt.enabled");
+        }
+
+        @Test
+        @DisplayName("default-auth-mode=JWT_OR_HMAC without HMAC enabled fails")
+        void defaultAuthModeJwtOrHmacWithoutHmacEnabledFails() {
+            var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.JWT_OR_HMAC);
+            props.getJwt().setEnabled(true);
+            props.getJwt().setSecret("test");
+            props.getJwt().setIssuer("test");
+            // hmac.enabled is false
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("default-auth-mode")
+                    .hasMessageContaining("JWT_OR_HMAC")
+                    .hasMessageContaining("hmac.enabled");
+        }
+
+        @Test
+        @DisplayName("route auth-mode=JWT without jwt.enabled fails with route id")
+        void routeJwtWithoutEnabledFails() {
+            var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.NONE);
+            var route = new GatewaySecurityProperties.RoutePolicy();
+            route.setId("my-jwt-route");
+            route.setPaths(java.util.List.of("/api/**"));
+            route.setAuthMode(AuthMode.JWT);
+            props.getRoutes().add(route);
+
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("route 'my-jwt-route'")
+                    .hasMessageContaining("jwt.enabled");
+        }
+
+        @Test
+        @DisplayName("route auth-mode=HMAC without hmac.enabled fails with route id")
+        void routeHmacWithoutEnabledFails() {
+            var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.NONE);
+            var route = new GatewaySecurityProperties.RoutePolicy();
+            route.setId("my-hmac-route");
+            route.setPaths(java.util.List.of("/openapi/**"));
+            route.setAuthMode(AuthMode.HMAC);
+            props.getRoutes().add(route);
+
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("route 'my-hmac-route'")
+                    .hasMessageContaining("hmac.enabled");
+        }
+
+        @Test
+        @DisplayName("route auth-mode=JWT_OR_HMAC without both enabled fails with route id")
+        void routeJwtOrHmacWithoutBothEnabledFails() {
+            var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.NONE);
+            var route = new GatewaySecurityProperties.RoutePolicy();
+            route.setId("dual-route");
+            route.setPaths(java.util.List.of("/dual/**"));
+            route.setAuthMode(AuthMode.JWT_OR_HMAC);
+            props.getRoutes().add(route);
+
+            assertThatThrownBy(props::afterPropertiesSet)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("route 'dual-route'")
+                    .hasMessageContaining("JWT_OR_HMAC");
+        }
+
+        @Test
+        @DisplayName("route auth-mode=NONE without filters enabled succeeds")
+        void routeNoneWithoutFiltersSucceeds() {
+            var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.NONE);
+            var route = new GatewaySecurityProperties.RoutePolicy();
+            route.setId("public-route");
+            route.setPaths(java.util.List.of("/public/**"));
+            route.setAuthMode(AuthMode.NONE);
+            props.getRoutes().add(route);
+
             props.afterPropertiesSet(); // should not throw
         }
 
@@ -474,7 +583,7 @@ class GatewaySecurityPropertiesTest {
             var r1 = new GatewaySecurityProperties.RoutePolicy();
             r1.setId("valid-route");
             r1.setPaths(java.util.List.of("/api/v1/**"));
-            r1.setAuthMode(AuthMode.JWT);
+            r1.setAuthMode(AuthMode.NONE);
             props.getRoutes().add(r1);
 
             var r2 = new GatewaySecurityProperties.RoutePolicy();
@@ -487,14 +596,6 @@ class GatewaySecurityPropertiesTest {
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("broken-route")
                     .hasMessageContaining("auth-mode");
-        }
-
-        @Test
-        @DisplayName("HMAC disabled passes validation regardless of other fields")
-        void hmacDisabledPassesValidation() {
-            var props = new GatewaySecurityProperties();
-            // HMAC disabled by default
-            props.afterPropertiesSet(); // should not throw
         }
     }
 

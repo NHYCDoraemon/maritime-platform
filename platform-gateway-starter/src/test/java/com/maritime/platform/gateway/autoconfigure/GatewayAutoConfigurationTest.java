@@ -18,7 +18,8 @@ class GatewayAutoConfigurationTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(org.springframework.boot.autoconfigure.AutoConfigurations.of(GatewayAutoConfiguration.class))
             .withPropertyValues("spring.cloud.gateway.enabled=false",
-                    "spring.main.web-application-type=none");
+                    "spring.main.web-application-type=none",
+                    "maritime.gateway.security.default-auth-mode=none");
 
     @Nested
     @DisplayName("Default beans")

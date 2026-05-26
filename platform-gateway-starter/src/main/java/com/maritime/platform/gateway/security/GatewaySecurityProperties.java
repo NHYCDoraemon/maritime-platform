@@ -65,6 +65,16 @@ public class GatewaySecurityProperties implements InitializingBean {
                         "Route '" + rp.id + "' uses JWT_AND_HMAC which is reserved and not yet implemented");
             }
         }
+
+        // Fail closed: auth mode must be consistent with enabled flags.
+        // Without this check, a route requesting JWT/HMAC authentication
+        // would silently forward requests when the corresponding filter
+        // is not registered due to jwt.enabled=false / hmac.enabled=false.
+        validateAuthModeConsistency(defaultAuthMode, "default-auth-mode");
+        for (RoutePolicy rp : routes) {
+            validateAuthModeConsistency(rp.authMode, "route '" + rp.id + "'");
+        }
+
         if (jwt.enabled) {
             if (jwt.secret == null || jwt.secret.isBlank()) {
                 throw new IllegalStateException(
@@ -84,6 +94,36 @@ public class GatewaySecurityProperties implements InitializingBean {
                 throw new IllegalStateException(
                         "maritime.gateway.security.hmac.nonce-ttl must be a positive duration when hmac.enabled=true");
             }
+        }
+    }
+
+    private void validateAuthModeConsistency(AuthMode mode, String target) {
+        switch (mode) {
+            case JWT:
+                if (!jwt.enabled) {
+                    throw new IllegalStateException(
+                            target + " is JWT but maritime.gateway.security.jwt.enabled is not true");
+                }
+                break;
+            case HMAC:
+                if (!hmac.enabled) {
+                    throw new IllegalStateException(
+                            target + " is HMAC but maritime.gateway.security.hmac.enabled is not true");
+                }
+                break;
+            case JWT_OR_HMAC:
+                if (!jwt.enabled || !hmac.enabled) {
+                    throw new IllegalStateException(
+                            target + " is JWT_OR_HMAC but requires both "
+                            + "maritime.gateway.security.jwt.enabled=true and "
+                            + "maritime.gateway.security.hmac.enabled=true");
+                }
+                break;
+            case NONE:
+            case JWT_AND_HMAC:
+                // NONE: no auth components required.
+                // JWT_AND_HMAC: already rejected above.
+                break;
         }
     }
 
