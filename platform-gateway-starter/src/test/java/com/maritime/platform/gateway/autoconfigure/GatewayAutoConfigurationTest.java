@@ -7,6 +7,7 @@ import com.maritime.platform.gateway.security.GatewaySecurityProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 
@@ -84,6 +85,90 @@ class GatewayAutoConfigurationTest {
                     return reactor.core.publisher.Mono.empty();
                 }
             }
+        }
+    }
+
+    @Nested
+    @DisplayName("Fail-closed startup validation")
+    class FailClosedStartup {
+
+        @Test
+        @DisplayName("context fails when default-auth-mode=JWT but jwt.enabled=false")
+        void defaultJwtWithoutJwtEnabledFails() {
+            runner.withPropertyValues(
+                    "maritime.gateway.security.default-auth-mode=jwt"
+            ).run(ctx -> {
+                assertThat(ctx).getFailure().isNotNull();
+                assertThat(ctx.getStartupFailure())
+                        .hasMessageContaining("default-auth-mode")
+                        .hasMessageContaining("JWT")
+                        .hasMessageContaining("jwt.enabled");
+            });
+        }
+
+        @Test
+        @DisplayName("context fails when default-auth-mode=HMAC but hmac.enabled=false")
+        void defaultHmacWithoutHmacEnabledFails() {
+            runner.withPropertyValues(
+                    "maritime.gateway.security.default-auth-mode=hmac"
+            ).run(ctx -> {
+                assertThat(ctx).getFailure().isNotNull();
+                assertThat(ctx.getStartupFailure())
+                        .hasMessageContaining("default-auth-mode")
+                        .hasMessageContaining("HMAC")
+                        .hasMessageContaining("hmac.enabled");
+            });
+        }
+
+        @Test
+        @DisplayName("context fails when default-auth-mode=JWT_OR_HMAC without both enabled")
+        void defaultJwtOrHmacWithoutBothEnabledFails() {
+            runner.withPropertyValues(
+                    "maritime.gateway.security.default-auth-mode=jwt-or-hmac"
+            ).run(ctx -> {
+                assertThat(ctx).getFailure().isNotNull();
+                assertThat(ctx.getStartupFailure())
+                        .hasMessageContaining("JWT_OR_HMAC");
+            });
+        }
+
+        @Test
+        @DisplayName("context fails when route auth-mode=JWT but jwt.enabled=false")
+        void routeJwtWithoutJwtEnabledFails() {
+            runner.withPropertyValues(
+                    "maritime.gateway.security.routes[0].id=my-api",
+                    "maritime.gateway.security.routes[0].paths[0]=/api/**",
+                    "maritime.gateway.security.routes[0].auth-mode=jwt"
+            ).run(ctx -> {
+                assertThat(ctx).getFailure().isNotNull();
+                assertThat(ctx.getStartupFailure())
+                        .hasMessageContaining("route 'my-api'")
+                        .hasMessageContaining("jwt.enabled");
+            });
+        }
+
+        @Test
+        @DisplayName("context fails when route auth-mode=HMAC but hmac.enabled=false")
+        void routeHmacWithoutHmacEnabledFails() {
+            runner.withPropertyValues(
+                    "maritime.gateway.security.routes[0].id=open-api",
+                    "maritime.gateway.security.routes[0].paths[0]=/openapi/**",
+                    "maritime.gateway.security.routes[0].auth-mode=hmac"
+            ).run(ctx -> {
+                assertThat(ctx).getFailure().isNotNull();
+                assertThat(ctx.getStartupFailure())
+                        .hasMessageContaining("route 'open-api'")
+                        .hasMessageContaining("hmac.enabled");
+            });
+        }
+
+        @Test
+        @DisplayName("context succeeds with default-auth-mode=NONE and no filters enabled")
+        void defaultNoneWithoutFiltersSucceeds() {
+            runner.run(ctx -> {
+                assertThat(ctx).hasNotFailed();
+                assertThat(ctx).hasSingleBean(GatewaySecurityProperties.class);
+            });
         }
     }
 }
