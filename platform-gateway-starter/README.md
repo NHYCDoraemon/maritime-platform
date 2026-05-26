@@ -234,7 +234,7 @@ hmac:
 
 | 顺序 | 过滤器 | 作用 |
 |------|--------|------|
-| 1 | TraceIdGatewayFilter | 捕获或生成 trace ID |
+| 1 | TraceIdGatewayFilter | 校验客户端 TraceId 或生成新 UUID |
 | 2 | UntrustedHeaderStripFilter | 清除所有不信任的内部 header |
 | 3 | RequestLogGatewayFilter | 调试日志 |
 | 4 | RouteSecurityPolicyFilter | 解析路由认证策略 |
@@ -269,7 +269,23 @@ X-Trace-Id
 > 2. **认证后移除：** `HmacAuthenticationGatewayFilter` 在 HMAC 认证决策后移除这些签名 header（包括成功、失败、或非 HMAC 路径）。
 > 3. **最终剥离：** `ContextHeaderInjectionFilter` 在转发下游前**无条件**剥离所有已知 HMAC 签名 header —— 包括默认名称（`X-App-Key`、`X-Timestamp`、`X-Nonce`、`X-Body-Digest`、`X-Signature`）和当前配置的自定义名称。此步骤在 `hmac.enabled=false`、JWT-only、`auth-mode=none` 等所有模式下均生效，确保原始签名材料在任何场景下都不会到达下游业务服务。
 >
-> **TraceId 透传：** 客户端传入的 `X-Trace-Id` 在 `TraceIdGatewayFilter`（第一道过滤）中被捕获并规范化，随后被 `UntrustedHeaderStripFilter` 移除原始客户端 header，最后在 `ContextHeaderInjectionFilter` 中写入 gateway 确认后的值。下游服务因此总能收到 sanitized `X-Trace-Id`，且与响应中的 `X-Trace-Id` 一致。
+> **TraceId 透传：** 客户端传入的 `X-Trace-Id` 在 `TraceIdGatewayFilter`（第一道过滤）中被 `TraceIdNormalizer` 校验，随后被 `UntrustedHeaderStripFilter` 移除原始客户端 header，最后在 `ContextHeaderInjectionFilter` 中写入 gateway 确认后的值。下游服务因此总能收到经校验的 `X-Trace-Id`，且与响应中的 `X-Trace-Id` 一致。
+
+### TraceId 合同
+
+客户端可传入 `X-Trace-Id` header 用于跨服务链路追踪。gateway 对客户端值执行以下校验，不合格则生成新的 32 位无短横线 UUID 作为 trace ID：
+
+| 条件 | 行为 |
+|------|------|
+| 合法值（ASCII 字母/数字/`-`/`_`/`.`，长度 1–128） | 原样保留并由 gateway 重新写入下游 |
+| 空值、空白或缺失 | 生成 32 位十六进制 UUID |
+| 含非法字符（空格、控制字符、中文、特殊符号等） | 生成 32 位十六进制 UUID |
+| 长度超过 128 字符 | 生成 32 位十六进制 UUID |
+
+**合同要点：**
+- 下游服务**始终**收到一个非空 `X-Trace-Id`，无需自行兜底。
+- 客户端原始 `X-Trace-Id` **不会**原样到达下游 —— 它先被 `UntrustedHeaderStripFilter` 移除，再由 `ContextHeaderInjectionFilter` 用 gateway 确认后的值重新注入。
+- 非法 TraceId **不会**进入下游，确保下游服务无需自行防御畸形输入。
 
 ### 注入清单
 

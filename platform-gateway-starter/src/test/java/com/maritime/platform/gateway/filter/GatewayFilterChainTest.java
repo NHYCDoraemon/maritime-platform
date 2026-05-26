@@ -974,7 +974,127 @@ class GatewayFilterChainTest {
 
 		@Test
 		@DisplayName("public path: trace ID injected downstream even without auth principal")
-		void publicPathTraceIdInjected() {
+		void illegalTraceIdRejectedAndReplaced() {
+				GatewaySecurityProperties props = new GatewaySecurityProperties();
+				RouteSecurityPolicyResolver resolver = new RouteSecurityPolicyResolver(props);
+				resolver.afterPropertiesSet();
+
+				TraceIdGatewayFilter trace = new TraceIdGatewayFilter();
+				UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
+				RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
+				TrustedHeaderWriter writer = new TrustedHeaderWriter();
+				ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
+
+				MockServerWebExchange exchange = MockServerWebExchange.from(
+						MockServerHttpRequest.get("/api/data")
+								.header("X-Trace-Id", "illegal chars!"));
+
+				AtomicReference<ServerWebExchange> e1 = new AtomicReference<>();
+				trace.filter(exchange, capturingChain(e1)).block();
+
+				AtomicReference<ServerWebExchange> e2 = new AtomicReference<>();
+				strip.filter(e1.get(), capturingChain(e2)).block();
+
+				AtomicReference<ServerWebExchange> e4 = new AtomicReference<>();
+				security.filter(e2.get(), capturingChain(e4)).block();
+
+				AtomicReference<ServerWebExchange> e8 = new AtomicReference<>();
+				inject.filter(e4.get(), capturingChain(e8)).block();
+
+				ServerWebExchange result = e8.get();
+				String downstreamTraceId = result.getRequest().getHeaders()
+						.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+
+				assertThat(downstreamTraceId).isNotNull().isNotEmpty()
+						.isNotEqualTo("illegal chars!");
+				assertThat(downstreamTraceId).hasSize(32).doesNotContain("-")
+						.matches("[a-f0-9]{32}");
+			}
+
+			@Test
+			@DisplayName("too-long trace ID: gateway rejects and generates new UUID instead")
+			void tooLongTraceIdRejectedAndReplaced() {
+				GatewaySecurityProperties props = new GatewaySecurityProperties();
+				RouteSecurityPolicyResolver resolver = new RouteSecurityPolicyResolver(props);
+				resolver.afterPropertiesSet();
+
+				TraceIdGatewayFilter trace = new TraceIdGatewayFilter();
+				UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
+				RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
+				TrustedHeaderWriter writer = new TrustedHeaderWriter();
+				ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
+
+				String tooLong = "a".repeat(129);
+				MockServerWebExchange exchange = MockServerWebExchange.from(
+						MockServerHttpRequest.get("/api/data")
+								.header("X-Trace-Id", tooLong));
+
+				AtomicReference<ServerWebExchange> e1 = new AtomicReference<>();
+				trace.filter(exchange, capturingChain(e1)).block();
+
+				AtomicReference<ServerWebExchange> e2 = new AtomicReference<>();
+				strip.filter(e1.get(), capturingChain(e2)).block();
+
+				AtomicReference<ServerWebExchange> e4 = new AtomicReference<>();
+				security.filter(e2.get(), capturingChain(e4)).block();
+
+				AtomicReference<ServerWebExchange> e8 = new AtomicReference<>();
+				inject.filter(e4.get(), capturingChain(e8)).block();
+
+				ServerWebExchange result = e8.get();
+				String downstreamTraceId = result.getRequest().getHeaders()
+						.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+
+				assertThat(downstreamTraceId).isNotNull().isNotEmpty()
+						.isNotEqualTo(tooLong);
+				assertThat(downstreamTraceId).hasSize(32).doesNotContain("-")
+						.matches("[a-f0-9]{32}");
+			}
+
+			@Test
+			@DisplayName("blank trace ID: gateway generates new UUID and injects downstream")
+			void blankTraceIdGeneratedAndInjected() {
+				GatewaySecurityProperties props = new GatewaySecurityProperties();
+				RouteSecurityPolicyResolver resolver = new RouteSecurityPolicyResolver(props);
+				resolver.afterPropertiesSet();
+
+				TraceIdGatewayFilter trace = new TraceIdGatewayFilter();
+				UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
+				RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
+				TrustedHeaderWriter writer = new TrustedHeaderWriter();
+				ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
+
+				MockServerWebExchange exchange = MockServerWebExchange.from(
+						MockServerHttpRequest.get("/api/data")
+								.header("X-Trace-Id", "   "));
+
+				AtomicReference<ServerWebExchange> e1 = new AtomicReference<>();
+				trace.filter(exchange, capturingChain(e1)).block();
+
+				AtomicReference<ServerWebExchange> e2 = new AtomicReference<>();
+				strip.filter(e1.get(), capturingChain(e2)).block();
+
+				AtomicReference<ServerWebExchange> e4 = new AtomicReference<>();
+				security.filter(e2.get(), capturingChain(e4)).block();
+
+				AtomicReference<ServerWebExchange> e8 = new AtomicReference<>();
+				inject.filter(e4.get(), capturingChain(e8)).block();
+
+				ServerWebExchange result = e8.get();
+				String downstreamTraceId = result.getRequest().getHeaders()
+						.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+				String responseTraceId = result.getResponse().getHeaders()
+						.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+
+				assertThat(downstreamTraceId).isNotNull().isNotEmpty();
+				assertThat(downstreamTraceId).hasSize(32).doesNotContain("-")
+						.matches("[a-f0-9]{32}");
+				assertThat(downstreamTraceId).isEqualTo(responseTraceId);
+			}
+
+			@Test
+			@DisplayName("public path: trace ID injected downstream even without auth principal")
+			void publicPathTraceIdInjected() {
 			GatewaySecurityProperties props = new GatewaySecurityProperties();
 			props.getPublicPaths().add("/public/**");
 			RouteSecurityPolicyResolver resolver = new RouteSecurityPolicyResolver(props);
