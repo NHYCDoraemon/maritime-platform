@@ -21,7 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class GatewaySecurityPropertiesTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withUserConfiguration(TestConfiguration.class);
+            .withUserConfiguration(TestConfiguration.class)
+            .withPropertyValues("maritime.gateway.security.default-auth-mode=none");
 
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(GatewaySecurityProperties.class)
@@ -37,9 +38,10 @@ class GatewaySecurityPropertiesTest {
     class Defaults {
 
         @Test
-        @DisplayName("fails with no properties because default-auth-mode=jwt requires jwt.enabled=true")
+        @DisplayName("fails when default-auth-mode=jwt without jwt.enabled=true")
         void defaultsFailBecauseJwtDisabled() {
-            runner.run(ctx -> {
+            runner.withPropertyValues("maritime.gateway.security.default-auth-mode=jwt")
+                    .run(ctx -> {
                 assertThat(ctx).getFailure().isNotNull();
                 assertThat(ctx.getStartupFailure())
                         .hasMessageContaining("default-auth-mode")
@@ -298,6 +300,10 @@ class GatewaySecurityPropertiesTest {
         @DisplayName("binds route policies with kebab-case auth modes")
         void bindsRoutePolicies() {
             runner.withPropertyValues(
+                    "maritime.gateway.security.jwt.enabled=true",
+                    "maritime.gateway.security.jwt.secret=test-secret",
+                    "maritime.gateway.security.jwt.issuer=test-issuer",
+                    "maritime.gateway.security.hmac.enabled=true",
                     "maritime.gateway.security.routes[0].id=app-api",
                     "maritime.gateway.security.routes[0].paths[0]=/api/**",
                     "maritime.gateway.security.routes[0].auth-mode=jwt",
@@ -341,7 +347,10 @@ class GatewaySecurityPropertiesTest {
         @DisplayName("binds auth mode as lowercase enum values")
         void bindsLowercaseAuthMode() {
             runner.withPropertyValues(
-                    "maritime.gateway.security.default-auth-mode=none",
+                    "maritime.gateway.security.jwt.enabled=true",
+                    "maritime.gateway.security.jwt.secret=test-secret",
+                    "maritime.gateway.security.jwt.issuer=test-issuer",
+                    "maritime.gateway.security.hmac.enabled=true",
                     "maritime.gateway.security.routes[0].id=open",
                     "maritime.gateway.security.routes[0].paths[0]=/**",
                     "maritime.gateway.security.routes[0].auth-mode=jwt-or-hmac"
@@ -397,6 +406,7 @@ class GatewaySecurityPropertiesTest {
         @DisplayName("HMAC enabled with negative timestamp tolerance causes failure")
         void hmacEnabledWithNegativeTimestampFails() {
             var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.NONE);
             props.getHmac().setEnabled(true);
             props.getHmac().setTimestampTolerance(Duration.ofMinutes(-1));
 
@@ -409,6 +419,7 @@ class GatewaySecurityPropertiesTest {
         @DisplayName("HMAC enabled with negative nonce ttl causes failure")
         void hmacEnabledWithNegativeNonceTtlFails() {
             var props = new GatewaySecurityProperties();
+            props.setDefaultAuthMode(AuthMode.NONE);
             props.getHmac().setEnabled(true);
             props.getHmac().setNonceTtl(Duration.ofMinutes(-1));
 

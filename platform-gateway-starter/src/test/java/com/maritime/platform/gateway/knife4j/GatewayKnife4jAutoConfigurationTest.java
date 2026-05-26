@@ -19,7 +19,8 @@ class GatewayKnife4jAutoConfigurationTest {
                     GatewayRedisConfiguration.class,
                     GatewayKnife4jAutoConfiguration.class))
             .withPropertyValues("spring.cloud.gateway.enabled=false",
-                    "spring.main.web-application-type=none");
+                    "spring.main.web-application-type=none",
+                    "maritime.gateway.security.default-auth-mode=none");
 
     @Nested
     @DisplayName("Without Knife4j on classpath")
