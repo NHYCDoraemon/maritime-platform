@@ -1,0 +1,3 @@
+verification: pass
+  - rc=0 ok: mvn -pl platform-gateway-starter -Dtest=GatewayFilterChainTest,TrustedHeaderWriterTest test
+  - rc=0 ok: mvn -pl platform-gateway-starter -am test

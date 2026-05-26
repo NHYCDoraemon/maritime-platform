@@ -39,20 +39,28 @@ public class ContextHeaderInjectionFilter implements GlobalFilter, Ordered {
 
 	@Override
 	public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-		GatewayPrincipal principal = exchange.getAttribute(GatewayPrincipal.ATTRIBUTE);
-		if (principal == null) {
-			return chain.filter(exchange);
+		ServerHttpRequest.Builder builder = exchange.getRequest().mutate();
+
+		// Always write sanitized X-Trace-Id to downstream request.
+		// The client original was already captured by TraceIdGatewayFilter
+		// and stripped by UntrustedHeaderStripFilter, so this is the
+		// gateway-confirmed value for all paths (public, JWT, HMAC).
+		String traceId = exchange.getAttribute(TraceIdGatewayFilter.TRACE_ID_ATTR);
+		if (traceId != null) {
+			builder.header(TraceIdGatewayFilter.TRACE_ID_HEADER, traceId);
 		}
 
-		ServerHttpRequest.Builder builder = exchange.getRequest().mutate();
+		GatewayPrincipal principal = exchange.getAttribute(GatewayPrincipal.ATTRIBUTE);
 		if (principal instanceof GatewayPrincipal.User user) {
 			trustedHeaderWriter.writeUserHeaders(builder, user);
 		} else if (principal instanceof GatewayPrincipal.App app) {
 			trustedHeaderWriter.writeAppHeaders(builder, app);
 		}
 
-		for (GatewayPrincipalHeaderCustomizer customizer : customizers) {
-			customizer.customize(builder, principal);
+		if (principal != null) {
+			for (GatewayPrincipalHeaderCustomizer customizer : customizers) {
+				customizer.customize(builder, principal);
+			}
 		}
 
 		ServerHttpRequest mutated = builder.build();

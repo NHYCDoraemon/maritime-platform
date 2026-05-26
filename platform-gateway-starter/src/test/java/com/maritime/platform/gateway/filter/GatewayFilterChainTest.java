@@ -206,6 +206,8 @@ class GatewayFilterChainTest {
 					.header("X-App-Id", "1")
 					.header("X-Verified-App-Code", "verified-fake")
 					.header("X-App-Permissions", "all")
+					.header("X-User-Permissions", "admin,root")
+					.header("X-Test-Channel", "chaos")
 					.header("X-User-Name", "admin")
 					.header("X-Active-Org-Name", "Evil Corp")
 					// benign header that should pass through
@@ -358,6 +360,24 @@ class GatewayFilterChainTest {
 			assertThat(headers.getFirst("X-Verified-App-Code")).isNull();
 			assertThat(headers.getFirst("X-App-Permissions")).isNull();
 		}
+
+		@Test
+		@DisplayName("strips X-User-Permissions and X-Test-Channel from request")
+		void stripsUserPermissionsAndTestChannel() {
+			UntrustedHeaderStripFilter filter = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
+			MockServerHttpRequest request = MockServerHttpRequest.get("/test")
+					.header("X-User-Permissions", "admin,root")
+					.header("X-Test-Channel", "chaos-test")
+					.build();
+			MockServerWebExchange exchange = MockServerWebExchange.from(request);
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			assertThat(headers.getFirst("X-User-Permissions")).isNull();
+			assertThat(headers.getFirst("X-Test-Channel")).isNull();
+		}
 	}
 
 	// ---------- security policy filter ----------
@@ -430,15 +450,63 @@ class GatewayFilterChainTest {
 	class ContextInjection {
 
 		@Test
-		@DisplayName("no principal passes request through unchanged")
-		void passesThroughWhenNoPrincipal() {
+		@DisplayName("no principal passes request through with trace ID injected")
+		void traceIdInjectedWhenNoPrincipal() {
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
 			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null);
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/api/data"));
+			exchange.getAttributes().put(TraceIdGatewayFilter.TRACE_ID_ATTR, "trace-public-001");
 
-			Mono<Void> result = filter.filter(exchange, capturingChain(null));
-			StepVerifier.create(result).verifyComplete();
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			ServerWebExchange result = captured.get();
+			assertThat(result.getRequest().getHeaders().getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER))
+					.isEqualTo("trace-public-001");
+		}
+
+		@Test
+		@DisplayName("JWT user principal: identity headers and trace ID injected")
+		void jwtUserHeadersAndTraceIdInjected() {
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null);
+			GatewayPrincipal.User user = new GatewayPrincipal.User(
+					"user-1", "TestUser", "sess-1",
+					"ORG", "Org Name", List.of("read"), "SSO", "t-1");
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/data"));
+			exchange.getAttributes().put(TraceIdGatewayFilter.TRACE_ID_ATTR, "trace-jwt-002");
+			exchange.getAttributes().put(GatewayPrincipal.ATTRIBUTE, user);
+
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			assertThat(headers.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER)).isEqualTo("trace-jwt-002");
+			assertThat(headers.getFirst("X-User-Id")).isEqualTo("user-1");
+		}
+
+		@Test
+		@DisplayName("HMAC app principal: identity headers and trace ID injected")
+		void hmacAppHeadersAndTraceIdInjected() {
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null);
+			GatewayPrincipal.App app = new GatewayPrincipal.App(
+					"ak", "ac", "ai", "t", "tc", List.of("read"));
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/openapi/data"));
+			exchange.getAttributes().put(TraceIdGatewayFilter.TRACE_ID_ATTR, "trace-hmac-003");
+			exchange.getAttributes().put(GatewayPrincipal.ATTRIBUTE, app);
+
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			assertThat(headers.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER)).isEqualTo("trace-hmac-003");
+			assertThat(headers.getFirst("X-App-Code")).isEqualTo("ac");
 		}
 	}
 
@@ -673,6 +741,177 @@ class GatewayFilterChainTest {
 			assertThat(finalHeaders.getFirst("X-User-Id")).isNull();
 			assertThat(finalHeaders.getFirst("X-App-Code")).isNull();
 			assertThat(finalHeaders.getFirst("X-Tenant-Id")).isNull();
+		}
+
+		// ---------- trace ID end-to-end ----------
+
+		@Test
+		@DisplayName("client-provided X-Trace-Id is captured, stripped, and re-injected downstream")
+		void clientTraceIdCapturedAndReinjected() {
+			GatewaySecurityProperties props = new GatewaySecurityProperties();
+			RouteSecurityPolicyResolver resolver = new RouteSecurityPolicyResolver(props);
+			resolver.afterPropertiesSet();
+
+			TraceIdGatewayFilter trace = new TraceIdGatewayFilter();
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
+			RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/data")
+							.header("X-Trace-Id", "client-supplied-trace"));
+
+			// Step 1: capture trace ID (sanitize: reuse incoming non-blank value)
+			AtomicReference<ServerWebExchange> e1 = new AtomicReference<>();
+			trace.filter(exchange, capturingChain(e1)).block();
+
+			// Step 2: strip (removes client X-Trace-Id from request)
+			AtomicReference<ServerWebExchange> e2 = new AtomicReference<>();
+			strip.filter(e1.get(), capturingChain(e2)).block();
+
+			// Step 4: security policy (required before injection)
+			AtomicReference<ServerWebExchange> e4 = new AtomicReference<>();
+			security.filter(e2.get(), capturingChain(e4)).block();
+
+			// Step 8: inject (re-writes X-Trace-Id from attribute)
+			AtomicReference<ServerWebExchange> e8 = new AtomicReference<>();
+			inject.filter(e4.get(), capturingChain(e8)).block();
+
+			ServerWebExchange result = e8.get();
+			String downstreamTraceId = result.getRequest().getHeaders()
+					.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+			String responseTraceId = result.getResponse().getHeaders()
+					.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+
+			// Client value is sanitized (reused as-is when non-blank) and re-injected
+			assertThat(downstreamTraceId).isEqualTo("client-supplied-trace");
+			// Response and downstream request carry same trace ID
+			assertThat(downstreamTraceId).isEqualTo(responseTraceId);
+		}
+
+		@Test
+		@DisplayName("missing client X-Trace-Id: gateway generates and injects downstream")
+		void missingTraceIdGeneratedAndInjected() {
+			GatewaySecurityProperties props = new GatewaySecurityProperties();
+			RouteSecurityPolicyResolver resolver = new RouteSecurityPolicyResolver(props);
+			resolver.afterPropertiesSet();
+
+			TraceIdGatewayFilter trace = new TraceIdGatewayFilter();
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
+			RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/data"));
+
+			AtomicReference<ServerWebExchange> e1 = new AtomicReference<>();
+			trace.filter(exchange, capturingChain(e1)).block();
+
+			AtomicReference<ServerWebExchange> e2 = new AtomicReference<>();
+			strip.filter(e1.get(), capturingChain(e2)).block();
+
+			AtomicReference<ServerWebExchange> e4 = new AtomicReference<>();
+			security.filter(e2.get(), capturingChain(e4)).block();
+
+			AtomicReference<ServerWebExchange> e8 = new AtomicReference<>();
+			inject.filter(e4.get(), capturingChain(e8)).block();
+
+			ServerWebExchange result = e8.get();
+			String downstreamTraceId = result.getRequest().getHeaders()
+					.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+			String responseTraceId = result.getResponse().getHeaders()
+					.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+
+			// Gateway generates a UUID-based trace ID
+			assertThat(downstreamTraceId).isNotNull().isNotEmpty().doesNotContain("-");
+			// Response and downstream request trace IDs match
+			assertThat(downstreamTraceId).isEqualTo(responseTraceId);
+		}
+
+		@Test
+		@DisplayName("public path: trace ID injected downstream even without auth principal")
+		void publicPathTraceIdInjected() {
+			GatewaySecurityProperties props = new GatewaySecurityProperties();
+			props.getPublicPaths().add("/public/**");
+			RouteSecurityPolicyResolver resolver = new RouteSecurityPolicyResolver(props);
+			resolver.afterPropertiesSet();
+
+			TraceIdGatewayFilter trace = new TraceIdGatewayFilter();
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
+			RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/public/health"));
+
+			AtomicReference<ServerWebExchange> e1 = new AtomicReference<>();
+			trace.filter(exchange, capturingChain(e1)).block();
+
+			AtomicReference<ServerWebExchange> e2 = new AtomicReference<>();
+			strip.filter(e1.get(), capturingChain(e2)).block();
+
+			AtomicReference<ServerWebExchange> e4 = new AtomicReference<>();
+			security.filter(e2.get(), capturingChain(e4)).block();
+
+			AtomicReference<ServerWebExchange> e8 = new AtomicReference<>();
+			inject.filter(e4.get(), capturingChain(e8)).block();
+
+			ServerWebExchange result = e8.get();
+			String downstreamTraceId = result.getRequest().getHeaders()
+					.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+			String responseTraceId = result.getResponse().getHeaders()
+					.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER);
+
+			// Public path still gets trace ID in downstream request
+			assertThat(downstreamTraceId).isNotNull().isNotEmpty();
+			// Response and downstream request trace IDs match
+			assertThat(downstreamTraceId).isEqualTo(responseTraceId);
+			// No identity headers on public path (no principal)
+			assertThat(result.getRequest().getHeaders().getFirst("X-User-Id")).isNull();
+		}
+
+		@Test
+		@DisplayName("forged X-User-Permissions and X-Test-Channel are stripped in full chain")
+		void forgedPermissionsAndTestChannelStripped() {
+			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+
+			GatewayPrincipal.User user = new GatewayPrincipal.User(
+					"real-user", "RealName", "real-session",
+					"ORG-REAL", "Real Org",
+					List.of("user"), "SSO", "tenant-real");
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/api/secure")
+							.header("X-User-Permissions", "admin,root")
+							.header("X-Test-Channel", "chaos"));
+
+			// Step 1: strip
+			AtomicReference<ServerWebExchange> afterStrip = new AtomicReference<>();
+			strip.filter(exchange, capturingChain(afterStrip)).block();
+			ServerWebExchange stripped = afterStrip.get();
+
+			assertThat(stripped.getRequest().getHeaders().getFirst("X-User-Permissions")).isNull();
+			assertThat(stripped.getRequest().getHeaders().getFirst("X-Test-Channel")).isNull();
+
+			// Step 2: set principal
+			stripped.getAttributes().put(GatewayPrincipal.ATTRIBUTE, user);
+
+			// Step 3: inject
+			AtomicReference<ServerWebExchange> afterInjection = new AtomicReference<>();
+			inject.filter(stripped, capturingChain(afterInjection)).block();
+			ServerWebExchange finalExchange = afterInjection.get();
+
+			HttpHeaders finalHeaders = finalExchange.getRequest().getHeaders();
+			// Forged headers should not reach downstream
+			assertThat(finalHeaders.getFirst("X-User-Permissions")).isNull();
+			assertThat(finalHeaders.getFirst("X-Test-Channel")).isNull();
+			// Real identity headers are injected
+			assertThat(finalHeaders.getFirst("X-User-Id")).isEqualTo("real-user");
 		}
 	}
 

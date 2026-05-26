@@ -188,10 +188,14 @@ X-Tenant-Id, X-Tenant-Code
 X-App-Code, X-App-Id
 X-Verified-App-Code
 X-App-Permissions
+X-User-Permissions
+X-Test-Channel
 X-Trace-Id
 ```
 
 > **HMAC 签名 header 保留机制：** 当前配置的 HMAC 入站签名 header（`X-App-Key`、`X-Timestamp`、`X-Nonce`、`X-Body-Digest`、`X-Signature` 及其自定义名称）**不会**被 `UntrustedHeaderStripFilter` 清理，因为 HMAC 认证需要读取它们。这些签名 header 在认证决策后由 `HmacAuthenticationGatewayFilter` 移除 —— 无论是 HMAC 认证成功、认证失败（返回错误响应）、还是走 JWT/NONE 旁路，原始签名材料都不会到达下游业务服务。
+>
+> **TraceId 透传：** 客户端传入的 `X-Trace-Id` 在 `TraceIdGatewayFilter`（第一道过滤）中被捕获并规范化，随后被 `UntrustedHeaderStripFilter` 移除原始客户端 header，最后在 `ContextHeaderInjectionFilter` 中写入 gateway 确认后的值。下游服务因此总能收到 sanitized `X-Trace-Id`，且与响应中的 `X-Trace-Id` 一致。
 
 ### 注入清单
 

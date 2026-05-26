@@ -44,6 +44,8 @@ public class UntrustedHeaderStripFilter implements GlobalFilter, Ordered {
 			"X-App-Code", "X-App-Id",
 			"X-Verified-App-Code",
 			"X-App-Permissions",
+			"X-User-Permissions",
+			"X-Test-Channel",
 			"X-Trace-Id"
 	);
 
