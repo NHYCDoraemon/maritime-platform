@@ -25,6 +25,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -98,7 +99,7 @@ class GatewayFilterChainTest {
 			assertThat(new TraceIdGatewayFilter()).isInstanceOf(Ordered.class);
 			assertThat(new UntrustedHeaderStripFilter(props)).isInstanceOf(Ordered.class);
 			assertThat(new RequestLogGatewayFilter()).isInstanceOf(Ordered.class);
-			assertThat(new ContextHeaderInjectionFilter(new TrustedHeaderWriter(), null)).isInstanceOf(Ordered.class);
+			assertThat(new ContextHeaderInjectionFilter(new TrustedHeaderWriter(), null, null)).isInstanceOf(Ordered.class);
 		}
 
 		@Test
@@ -453,7 +454,7 @@ class GatewayFilterChainTest {
 		@DisplayName("no principal passes request through with trace ID injected")
 		void traceIdInjectedWhenNoPrincipal() {
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null, null);
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/api/data"));
 			exchange.getAttributes().put(TraceIdGatewayFilter.TRACE_ID_ATTR, "trace-public-001");
@@ -470,7 +471,7 @@ class GatewayFilterChainTest {
 		@DisplayName("JWT user principal: identity headers and trace ID injected")
 		void jwtUserHeadersAndTraceIdInjected() {
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null, null);
 			GatewayPrincipal.User user = new GatewayPrincipal.User(
 					"user-1", "TestUser", "sess-1",
 					"ORG", "Org Name", List.of("read"), "SSO", "t-1");
@@ -492,7 +493,7 @@ class GatewayFilterChainTest {
 		@DisplayName("HMAC app principal: identity headers and trace ID injected")
 		void hmacAppHeadersAndTraceIdInjected() {
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null, null);
 			GatewayPrincipal.App app = new GatewayPrincipal.App(
 					"ak", "ac", "ai", "t", "tc", List.of("read"));
 
@@ -509,6 +510,147 @@ class GatewayFilterChainTest {
 			assertThat(headers.getFirst("X-App-Code")).isEqualTo("ac");
 		}
 	}
+
+
+		// ---------- unconditional HMAC signature header stripping ----------
+
+		@Test
+		@DisplayName("strips default raw HMAC signature headers before forwarding")
+		void stripsDefaultHmacSignatureHeaders() {
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null, null);
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header("X-App-Key", "app-001")
+							.header("X-Timestamp", "1700000000000")
+							.header("X-Nonce", "nonce-0123456789abcdef")
+							.header("X-Body-Digest", "sha256hex")
+							.header("X-Signature", "hmac-signature"));
+			exchange.getAttributes().put(TraceIdGatewayFilter.TRACE_ID_ATTR, "trace-001");
+
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			assertThat(headers.getFirst("X-App-Key")).isNull();
+			assertThat(headers.getFirst("X-Timestamp")).isNull();
+			assertThat(headers.getFirst("X-Nonce")).isNull();
+			assertThat(headers.getFirst("X-Body-Digest")).isNull();
+			assertThat(headers.getFirst("X-Signature")).isNull();
+			assertThat(headers.getFirst(TraceIdGatewayFilter.TRACE_ID_HEADER)).isEqualTo("trace-001");
+		}
+
+		@Test
+		@DisplayName("strips default HMAC signature headers even without principal")
+		void stripsDefaultHmacHeadersWithoutPrincipal() {
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null, null);
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.get("/public/health")
+							.header("X-App-Key", "app-001")
+							.header("X-Timestamp", "1700000000000")
+							.header("X-Nonce", "nonce-0123456789abcdef")
+							.header("X-Body-Digest", "sha256hex")
+							.header("X-Signature", "hmac-signature"));
+
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			assertThat(headers.getFirst("X-App-Key")).isNull();
+			assertThat(headers.getFirst("X-Timestamp")).isNull();
+			assertThat(headers.getFirst("X-Nonce")).isNull();
+			assertThat(headers.getFirst("X-Body-Digest")).isNull();
+			assertThat(headers.getFirst("X-Signature")).isNull();
+		}
+
+		@Test
+		@DisplayName("strips raw HMAC headers case-insensitively")
+		void stripsHmacHeadersCaseInsensitively() {
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null, null);
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header("x-app-key", "app-001")
+							.header("x-timestamp", "1700000000000")
+							.header("X-NONCE", "nonce-0123456789abcdef")
+							.header("x-body-digest", "sha256hex")
+							.header("X-Signature", "hmac-signature"));
+			exchange.getAttributes().put(TraceIdGatewayFilter.TRACE_ID_ATTR, "trace-001");
+
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			assertThat(headers.getFirst("X-App-Key")).isNull();
+			assertThat(headers.getFirst("X-Timestamp")).isNull();
+			assertThat(headers.getFirst("X-Nonce")).isNull();
+			assertThat(headers.getFirst("X-Body-Digest")).isNull();
+			assertThat(headers.getFirst("X-Signature")).isNull();
+		}
+
+		@Test
+		@DisplayName("strips configured custom HMAC signature headers plus defaults")
+		void stripsCustomAndDefaultHmacSignatureHeaders() {
+			GatewaySecurityProperties props = new GatewaySecurityProperties();
+			props.getHmac().getHeaders().setAppKey("X-App-Code");
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, props, null);
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header("X-App-Code", "app-custom")
+							.header("X-Timestamp", "1700000000000")
+							.header("X-Nonce", "nonce-0123456789abcdef")
+							.header("X-Body-Digest", "sha256hex")
+							.header("X-Signature", "hmac-signature")
+							.header("X-App-Key", "forged-default"));
+			exchange.getAttributes().put(TraceIdGatewayFilter.TRACE_ID_ATTR, "trace-001");
+
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			// Configured custom header stripped
+			assertThat(headers.getFirst("X-App-Code")).isNull();
+			// Default HMAC signature headers also stripped
+			assertThat(headers.getFirst("X-App-Key")).isNull();
+			assertThat(headers.getFirst("X-Timestamp")).isNull();
+			assertThat(headers.getFirst("X-Nonce")).isNull();
+			assertThat(headers.getFirst("X-Body-Digest")).isNull();
+			assertThat(headers.getFirst("X-Signature")).isNull();
+		}
+
+		@Test
+		@DisplayName("strips raw HMAC headers while preserving benign headers")
+		void preservesBenignHeadersWhileStrippingHmac() {
+			TrustedHeaderWriter writer = new TrustedHeaderWriter();
+			ContextHeaderInjectionFilter filter = new ContextHeaderInjectionFilter(writer, null, null);
+
+			MockServerWebExchange exchange = MockServerWebExchange.from(
+					MockServerHttpRequest.post("/api/data")
+							.header("X-App-Key", "app-001")
+							.header("X-Timestamp", "1700000000000")
+							.header("X-Signature", "hmac-signature")
+							.header("Content-Type", "application/json")
+							.header("Accept", "application/json")
+							.header("X-Custom-Header", "custom-value"));
+			exchange.getAttributes().put(TraceIdGatewayFilter.TRACE_ID_ATTR, "trace-001");
+
+			AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+			filter.filter(exchange, capturingChain(captured)).block();
+
+			HttpHeaders headers = captured.get().getRequest().getHeaders();
+			assertThat(headers.getFirst("X-App-Key")).isNull();
+			assertThat(headers.getFirst("X-Timestamp")).isNull();
+			assertThat(headers.getFirst("X-Signature")).isNull();
+			assertThat(headers.getFirst("Content-Type")).isEqualTo("application/json");
+			assertThat(headers.getFirst("Accept")).isEqualTo("application/json");
+			assertThat(headers.getFirst("X-Custom-Header")).isEqualTo("custom-value");
+		}
 
 	// ---------- full chain simulation ----------
 
@@ -529,7 +671,7 @@ class GatewayFilterChainTest {
 			RequestLogGatewayFilter logFilter = new RequestLogGatewayFilter();
 			RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
 
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/public/health")
@@ -615,7 +757,7 @@ class GatewayFilterChainTest {
 		void forgedJwtHeadersStrippedAndInjected() {
 			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
 
 			GatewayPrincipal.User user = new GatewayPrincipal.User(
 					"real-user", "RealName", "real-session",
@@ -671,7 +813,7 @@ class GatewayFilterChainTest {
 		void forgedAppHeadersStrippedAndInjected() {
 			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
 
 			GatewayPrincipal.App app = new GatewayPrincipal.App(
 					"real-app-key", "real-app-code", "real-app-id",
@@ -716,7 +858,7 @@ class GatewayFilterChainTest {
 		void forgedHeadersStrippedEvenWithoutAuth() {
 			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
 
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/public/health")
@@ -756,7 +898,7 @@ class GatewayFilterChainTest {
 			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
 
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/api/data")
@@ -801,7 +943,7 @@ class GatewayFilterChainTest {
 			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
 
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/api/data"));
@@ -842,7 +984,7 @@ class GatewayFilterChainTest {
 			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			RouteSecurityPolicyFilter security = new RouteSecurityPolicyFilter(resolver);
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
 
 			MockServerWebExchange exchange = MockServerWebExchange.from(
 					MockServerHttpRequest.get("/public/health"));
@@ -878,7 +1020,7 @@ class GatewayFilterChainTest {
 		void forgedPermissionsAndTestChannelStripped() {
 			UntrustedHeaderStripFilter strip = new UntrustedHeaderStripFilter(new GatewaySecurityProperties());
 			TrustedHeaderWriter writer = new TrustedHeaderWriter();
-			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null);
+			ContextHeaderInjectionFilter inject = new ContextHeaderInjectionFilter(writer, null, null);
 
 			GatewayPrincipal.User user = new GatewayPrincipal.User(
 					"real-user", "RealName", "real-session",

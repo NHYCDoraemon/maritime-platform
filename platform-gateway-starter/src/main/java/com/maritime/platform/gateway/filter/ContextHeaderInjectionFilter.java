@@ -2,6 +2,7 @@ package com.maritime.platform.gateway.filter;
 
 import com.maritime.platform.gateway.security.GatewayPrincipal;
 import com.maritime.platform.gateway.security.GatewayPrincipalHeaderCustomizer;
+import com.maritime.platform.gateway.security.GatewaySecurityProperties;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -14,7 +15,9 @@ import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Injects verified identity headers into the downstream request after
@@ -30,16 +33,40 @@ public class ContextHeaderInjectionFilter implements GlobalFilter, Ordered {
 
 	private final TrustedHeaderWriter trustedHeaderWriter;
 	private final List<GatewayPrincipalHeaderCustomizer> customizers;
+	private final GatewaySecurityProperties properties;
+
+	/**
+	 * Default HMAC signature header names that must always be stripped
+	 * before forwarding, regardless of whether HMAC is enabled or how
+	 * headers are configured.
+	 */
+	static final Set<String> DEFAULT_HMAC_HEADERS = Set.of(
+			"X-App-Key", "X-Timestamp", "X-Nonce", "X-Body-Digest", "X-Signature");
 
 	public ContextHeaderInjectionFilter(TrustedHeaderWriter trustedHeaderWriter,
+			GatewaySecurityProperties properties,
 			@Autowired(required = false) List<GatewayPrincipalHeaderCustomizer> customizers) {
 		this.trustedHeaderWriter = trustedHeaderWriter;
+		this.properties = properties;
 		this.customizers = customizers != null ? customizers : List.of();
 	}
 
 	@Override
 	public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
 		ServerHttpRequest.Builder builder = exchange.getRequest().mutate();
+
+		// Strip all known raw HMAC signature headers before forwarding.
+		// This runs unconditionally for all paths and auth modes, so
+		// raw signature material never reaches downstream even when
+		// hmac.enabled=false or the HMAC filter is absent.
+		Set<String> allHmacHeaders = allHmacHeaderNames();
+		if (!allHmacHeaders.isEmpty()) {
+			builder.headers(headers -> {
+				for (String h : allHmacHeaders) {
+					headers.remove(h);
+				}
+			});
+		}
 
 		// Always write sanitized X-Trace-Id to downstream request.
 		// The client original was already captured by TraceIdGatewayFilter
@@ -65,6 +92,23 @@ public class ContextHeaderInjectionFilter implements GlobalFilter, Ordered {
 
 		ServerHttpRequest mutated = builder.build();
 		return chain.filter(exchange.mutate().request(mutated).build());
+	}
+
+	/**
+	 * Returns the union of default and currently configured HMAC signature
+	 * header names. These are stripped unconditionally before forwarding.
+	 */
+	private Set<String> allHmacHeaderNames() {
+		Set<String> names = new LinkedHashSet<>(DEFAULT_HMAC_HEADERS);
+		if (properties != null) {
+			GatewaySecurityProperties.Headers hdrs = properties.getHmac().getHeaders();
+			names.add(hdrs.getAppKey());
+			names.add(hdrs.getTimestamp());
+			names.add(hdrs.getNonce());
+			names.add(hdrs.getBodyDigest());
+			names.add(hdrs.getSignature());
+		}
+		return names;
 	}
 
 	@Override

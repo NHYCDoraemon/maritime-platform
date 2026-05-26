@@ -30,7 +30,7 @@ class ContextHeaderInjectionFilterTest {
 	}
 
 	private ContextHeaderInjectionFilter filter(List<GatewayPrincipalHeaderCustomizer> customizers) {
-		return new ContextHeaderInjectionFilter(new TrustedHeaderWriter(), customizers);
+		return new ContextHeaderInjectionFilter(new TrustedHeaderWriter(), null, customizers);
 	}
 
 	// ---------- no principal ----------
