@@ -1,5 +1,6 @@
 package com.maritime.iam.sdk.event;
 
+import com.maritime.iam.sdk.cache.IamSdkCacheKeys;
 import com.maritime.iam.sdk.mapper.ApiToPageMapper;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -37,7 +38,9 @@ public class IamEventListener {
 
     @RabbitListener(queues = "#{iamSdkCacheInvalidationQueue.name}")
     public void onCacheInvalidation(CacheInvalidationEvent event) {
-        if (!systemCode.equals(event.systemCode())) {
+        if (event == null
+                || (!systemCode.equals(event.systemCode())
+                && !"ALL".equals(event.systemCode()))) {
             return;
         }
         LOG.info("Cache invalidation received: userCount={}",
@@ -49,24 +52,40 @@ public class IamEventListener {
 
     private void clearL2Cache(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
+            clearSystemCache();
             return;
         }
         for (String userId : userIds) {
             clearUserNavCache(userId);
             clearUserPageCache(userId);
+            clearUserPermissionCodes(userId);
         }
     }
 
     private void clearUserNavCache(String userId) {
-        String pattern = "biz:nav:" + systemCode
-                + ":" + userId + ":*";
-        scanAndDelete(pattern);
+        scanAndDelete(IamSdkCacheKeys.navUserPattern(
+                systemCode, userId));
     }
 
     private void clearUserPageCache(String userId) {
-        String pattern = "biz:page:" + systemCode
-                + ":" + userId + ":*";
-        scanAndDelete(pattern);
+        scanAndDelete(IamSdkCacheKeys.pageUserPattern(
+                systemCode, userId));
+    }
+
+    private void clearUserPermissionCodes(String userId) {
+        scanAndDelete(
+                IamSdkCacheKeys.permissionCodesUserPattern(
+                        systemCode, userId));
+    }
+
+    private void clearSystemCache() {
+        scanAndDelete(
+                IamSdkCacheKeys.navSystemPattern(systemCode));
+        scanAndDelete(
+                IamSdkCacheKeys.pageSystemPattern(systemCode));
+        scanAndDelete(
+                IamSdkCacheKeys.permissionCodesSystemPattern(
+                        systemCode));
     }
 
     /**

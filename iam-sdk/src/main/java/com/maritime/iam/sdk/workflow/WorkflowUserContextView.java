@@ -38,4 +38,28 @@ public record WorkflowUserContextView(
         duties = duties == null ? List.of() : List.copyOf(duties);
         regionCodes = regionCodes == null ? List.of() : List.copyOf(regionCodes);
     }
+
+    /**
+     * Backward-compatible constructor for consumers compiled against the
+     * pre-ADR-0067 six-field contract.
+     */
+    public WorkflowUserContextView(
+            String userId,
+            String displayName,
+            String orgCode,
+            List<String> orgPath,
+            String positionCode,
+            List<String> roleCodes) {
+        this(
+                userId,
+                displayName,
+                orgCode,
+                orgPath,
+                positionCode,
+                roleCodes,
+                List.of(),
+                List.of(),
+                List.of()
+        );
+    }
 }

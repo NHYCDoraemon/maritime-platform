@@ -1,5 +1,6 @@
 package com.maritime.iam.sdk;
 
+import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -14,6 +15,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     secret: ${IAM_APP_SECRET}
  *   sdk:
  *     fail-open: false
+ *     cache:
+ *       permission-codes-ttl: 30m
+ *       empty-permission-codes-ttl: 2m
+ *       version-check-interval: 1s
+ *       max-permission-header-bytes: 16384
  *     scope:
  *       org-column: org_id        # default — override to e.g. creator_org_code
  *       self-column: user_id      # default — override to e.g. creator_user_id
@@ -101,6 +107,7 @@ public class IamSdkProperties {
 
         private boolean failOpen = false;
         private Scope scope = new Scope();
+        private Cache cache = new Cache();
 
         public boolean isFailOpen() {
             return failOpen;
@@ -116,6 +123,66 @@ public class IamSdkProperties {
 
         public void setScope(Scope scope) {
             this.scope = scope;
+        }
+
+        public Cache getCache() {
+            return cache;
+        }
+
+        public void setCache(Cache cache) {
+            this.cache = cache;
+        }
+    }
+
+    /**
+     * Business-side permission cache and reconciliation settings.
+     */
+    public static class Cache {
+
+        private Duration permissionCodesTtl =
+                Duration.ofMinutes(30);
+        private Duration emptyPermissionCodesTtl =
+                Duration.ofMinutes(2);
+        private Duration versionCheckInterval =
+                Duration.ofSeconds(1);
+        private int maxPermissionHeaderBytes = 16 * 1024;
+
+        public Duration getPermissionCodesTtl() {
+            return permissionCodesTtl;
+        }
+
+        public void setPermissionCodesTtl(
+                Duration permissionCodesTtl) {
+            this.permissionCodesTtl = permissionCodesTtl;
+        }
+
+        public Duration getEmptyPermissionCodesTtl() {
+            return emptyPermissionCodesTtl;
+        }
+
+        public void setEmptyPermissionCodesTtl(
+                Duration emptyPermissionCodesTtl) {
+            this.emptyPermissionCodesTtl =
+                    emptyPermissionCodesTtl;
+        }
+
+        public Duration getVersionCheckInterval() {
+            return versionCheckInterval;
+        }
+
+        public void setVersionCheckInterval(
+                Duration versionCheckInterval) {
+            this.versionCheckInterval = versionCheckInterval;
+        }
+
+        public int getMaxPermissionHeaderBytes() {
+            return maxPermissionHeaderBytes;
+        }
+
+        public void setMaxPermissionHeaderBytes(
+                int maxPermissionHeaderBytes) {
+            this.maxPermissionHeaderBytes =
+                    maxPermissionHeaderBytes;
         }
     }
 
