@@ -11,7 +11,13 @@ public class SnowflakeIdAutoConfiguration {
     @Bean
     public SnowflakeIdGenerator snowflakeIdGenerator(
             @Value("${iam.snowflake.datacenter-id:0}") long datacenterId,
-            @Value("${iam.snowflake.worker-id:0}") long workerId) {
-        return new SnowflakeIdGenerator(datacenterId, workerId);
+            @Value("${iam.snowflake.worker-id:0}") long workerId,
+            @Value("${iam.snowflake.max-clock-backward-millis:5000}")
+            long maxClockBackwardMillis) {
+        return new SnowflakeIdGenerator(
+                datacenterId,
+                workerId,
+                maxClockBackwardMillis
+        );
     }
 }
