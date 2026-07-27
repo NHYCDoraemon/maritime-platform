@@ -85,7 +85,8 @@ Spring Boot 的 Redis/Jackson 自动配置，并仅提供
 1. 未修复代码因为自动配置顺序缺失，无法创建依赖 `StringRedisTemplate` 的
    lock、leader、idempotency 和 resilience 默认 Bean。
 2. 修复后所有默认 Bean 均被创建。
-3. 不提供 `RedisConnectionFactory` 时，这些默认 Bean 均不创建且上下文正常。
+3. 通过测试 ClassLoader 隐藏 Lettuce、使 Boot 无法提供
+   `RedisConnectionFactory` 时，这些默认 Bean 均不创建且上下文正常。
 4. 用户提供 `LockPort` 或 `IdempotencyPort` 时，平台默认实现回退。
 
 先运行聚焦测试完成 RED/GREEN，再运行 `platform-common-redis` 模块测试，最后在

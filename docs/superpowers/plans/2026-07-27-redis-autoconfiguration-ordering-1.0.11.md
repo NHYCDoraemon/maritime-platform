@@ -60,6 +60,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -197,6 +198,7 @@ Add the two contract tests:
 @Test
 void backsOffCleanlyWithoutRedisConnectionFactory() {
     new ApplicationContextRunner()
+            .withClassLoader(new FilteredClassLoader("io.lettuce.core"))
             .withConfiguration(redisAutoConfigurations())
             .run(context -> assertThat(context)
                     .doesNotHaveBean(StringRedisTemplate.class)
@@ -228,6 +230,12 @@ void backsOffForConsumerLockAndIdempotencyPorts() {
             });
 }
 ```
+
+The `FilteredClassLoader` is required because Boot creates a default
+`LettuceConnectionFactory` whenever Lettuce is visible, even when the test does
+not explicitly register a `RedisConnectionFactory`. Hiding Lettuce models a
+consumer without Redis client infrastructure and makes the backoff condition
+observable without changing production code.
 
 - [ ] **Step 6: Run the complete Redis module test suite**
 
