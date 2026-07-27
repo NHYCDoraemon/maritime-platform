@@ -74,4 +74,7 @@ Gateway 的可信 Header 清理、认证过滤器、nonce 校验和过滤器顺�
   fail closed。
 - MyBatis 覆盖：默认拦截器、customizer 顺序和整体 Bean 覆盖。
 - MQ 覆盖：兼容默认值、显式关闭和同名拓扑 Bean 回退。
-- L3 运行受影响模块测试；Redis/Gateway Testcontainers 需要可用 Docker。
+- L3 运行受影响模块测试；Redis/Gateway Testcontainers 需要可用的 Docker-compatible
+  容器运行时。本机使用 Finch 时，预拉取测试镜像，并设置
+  `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`、
+  `TESTCONTAINERS_CHECKS_DISABLE=true` 与 `-Dapi.version=1.43`。
