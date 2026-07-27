@@ -49,7 +49,7 @@ And in your project `pom.xml` or `settings.xml`:
     <dependency>
       <groupId>com.maritime.platform</groupId>
       <artifactId>platform-bom</artifactId>
-      <version>1.0.0</version>
+      <version>1.0.11</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
