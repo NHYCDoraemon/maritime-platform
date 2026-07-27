@@ -14,7 +14,6 @@ import java.util.List;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.lang.NonNull;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -33,7 +32,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>Runs before business interceptors (order = Ordered.HIGHEST_PRECEDENCE + 5).
  */
-@Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 5)
 public class GatewayUserContextFilter extends OncePerRequestFilter {
 

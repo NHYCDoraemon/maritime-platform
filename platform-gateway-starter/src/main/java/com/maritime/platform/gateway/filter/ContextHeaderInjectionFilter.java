@@ -4,13 +4,11 @@ import com.maritime.platform.gateway.security.GatewayPrincipal;
 import com.maritime.platform.gateway.security.GatewayPrincipalHeaderCustomizer;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
@@ -27,7 +25,6 @@ import java.util.Set;
  * {@link UntrustedHeaderStripFilter}, so any headers written here are
  * guaranteed to originate from the gateway starter.
  */
-@Component
 @Order(GatewayFilterOrder.CONTEXT_HEADER_INJECTION)
 public class ContextHeaderInjectionFilter implements GlobalFilter, Ordered {
 
@@ -45,7 +42,7 @@ public class ContextHeaderInjectionFilter implements GlobalFilter, Ordered {
 
 	public ContextHeaderInjectionFilter(TrustedHeaderWriter trustedHeaderWriter,
 			GatewaySecurityProperties properties,
-			@Autowired(required = false) List<GatewayPrincipalHeaderCustomizer> customizers) {
+			List<GatewayPrincipalHeaderCustomizer> customizers) {
 		this.trustedHeaderWriter = trustedHeaderWriter;
 		this.properties = properties;
 		this.customizers = customizers != null ? customizers : List.of();

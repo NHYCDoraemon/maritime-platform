@@ -3,7 +3,6 @@ package com.maritime.platform.gateway.filter;
 import com.maritime.platform.gateway.security.GatewayPrincipal;
 
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
@@ -15,7 +14,6 @@ import java.util.List;
  * and permissions headers. Both paths always set every defined
  * header so downstream services can trust their presence.
  */
-@Component
 public class TrustedHeaderWriter {
 
 	static final String X_USER_ID = "X-User-Id";

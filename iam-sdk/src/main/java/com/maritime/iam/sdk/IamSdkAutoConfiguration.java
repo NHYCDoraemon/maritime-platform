@@ -21,9 +21,11 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.Queue;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -57,11 +59,13 @@ public class IamSdkAutoConfiguration {
                     IamSdkAutoConfiguration.class);
 
     @Bean
+    @ConditionalOnMissingBean(name = "iamSdkRestTemplate")
     RestTemplate iamSdkRestTemplate() {
         return new RestTemplate();
     }
 
     @Bean
+    @ConditionalOnMissingBean
     HmacSignatureGenerator hmacSignatureGenerator(
             IamSdkProperties properties) {
         return new HmacSignatureGenerator(
@@ -70,16 +74,20 @@ public class IamSdkAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
     IamQueryClient iamQueryClient(
             IamSdkProperties properties,
-            HmacSignatureGenerator hmac) {
+            HmacSignatureGenerator hmac,
+            @Qualifier("iamSdkRestTemplate")
+            RestTemplate restTemplate) {
         return new IamQueryClient(
-                iamSdkRestTemplate(),
+                restTemplate,
                 properties.getCenter().getUrl(),
                 hmac);
     }
 
     @Bean
+    @ConditionalOnMissingBean
     ApiToPageMapper apiToPageMapper(
             IamQueryClient client,
             IamSdkProperties properties) {
@@ -90,13 +98,14 @@ public class IamSdkAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "iamPermissionFilter")
     @ConditionalOnClass(name =
             "org.springframework.web.servlet.mvc.method"
                     + ".annotation"
                     + ".RequestMappingHandlerMapping")
     FilterRegistrationBean<IamPermissionFilter>
             iamPermissionFilter(
-            @org.springframework.beans.factory.annotation.Qualifier("requestMappingHandlerMapping")
+            @Qualifier("requestMappingHandlerMapping")
             RequestMappingHandlerMapping mapping,
             ApiToPageMapper pageMapper,
             IamQueryClient client,
@@ -112,6 +121,7 @@ public class IamSdkAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "iamSdkScopeColumns")
     ScopeColumns iamSdkScopeColumns(IamSdkProperties properties) {
         IamSdkProperties.Scope scope = properties.getSdk().getScope();
         return new ScopeColumns(
@@ -121,6 +131,7 @@ public class IamSdkAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
     @ConditionalOnClass(name =
             "org.apache.ibatis.plugin.Interceptor")
     DataPermissionInjector dataPermissionInjector(
@@ -136,24 +147,27 @@ public class IamSdkAutoConfiguration {
      * {@code spring-boot-starter-aop} on the classpath.
      */
     @Bean
+    @ConditionalOnMissingBean(name = "bypassDataPermissionAspect")
     @ConditionalOnClass(name = "org.aspectj.lang.annotation.Aspect")
     BypassDataPermissionAspect bypassDataPermissionAspect() {
         return new BypassDataPermissionAspect();
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "iamEndpointSelfChecker")
     @ConditionalOnClass(name =
             "org.springframework.web.servlet.mvc.method"
                     + ".annotation"
                     + ".RequestMappingHandlerMapping")
     ApplicationListener<ApplicationReadyEvent>
             iamEndpointSelfChecker(
-            @org.springframework.beans.factory.annotation.Qualifier("requestMappingHandlerMapping")
+            @Qualifier("requestMappingHandlerMapping")
             RequestMappingHandlerMapping mapping) {
         return event -> checkEndpoints(mapping);
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "iamStartupWarnings")
     ApplicationListener<ApplicationReadyEvent>
             iamStartupWarnings(IamSdkProperties properties) {
         return event -> logStartupWarnings(properties);

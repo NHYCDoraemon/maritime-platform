@@ -4,9 +4,7 @@ import com.maritime.platform.gateway.security.GatewaySecurityProperties;
 import com.maritime.platform.gateway.security.jwt.GatewayAuthErrorCode;
 import com.maritime.platform.gateway.security.jwt.JwtAuthenticationException;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.ReactiveRedisOperations;
-import org.springframework.stereotype.Component;
 
 import reactor.core.publisher.Mono;
 
@@ -18,8 +16,6 @@ import java.time.Duration;
  *
  * <p>Key format: {@code {nonceKeyPrefix}{appKey}:{nonce}}
  */
-@Component
-@ConditionalOnProperty("maritime.gateway.security.hmac.enabled")
 public class HmacNonceValidator {
 
 	private final ReactiveRedisOperations<String, String> redisOps;

@@ -25,7 +25,11 @@ public class OutboxPoller {
         this.props = props;
     }
 
-    @Scheduled(fixedDelayString = "#{@outboxProperties.pollInterval.toMillis()}")
+    @Scheduled(fixedDelayString =
+            "#{@environment.getProperty("
+                    + "'platform.outbox.poll-interval', "
+                    + "T(java.time.Duration), "
+                    + "T(java.time.Duration).ofSeconds(5)).toMillis()}")
     public void poll() {
         if (!props.isEnabled()) return;
         List<OutboxEntryDO> due = store.findDue(props.getBatchSize());

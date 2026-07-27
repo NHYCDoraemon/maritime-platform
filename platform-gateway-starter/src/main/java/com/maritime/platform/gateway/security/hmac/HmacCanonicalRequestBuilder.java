@@ -1,7 +1,5 @@
 package com.maritime.platform.gateway.security.hmac;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -29,8 +27,6 @@ import java.util.stream.Collectors;
  * Timestamp is epoch millis. bodyDigest is SHA-256 hex of the raw request body.
  * The final signature is {@code HMAC-SHA256(appSecret, canonicalString)} as lowercase hex.
  */
-@Component
-@ConditionalOnProperty("maritime.gateway.security.hmac.enabled")
 public class HmacCanonicalRequestBuilder {
 
 	private static final String LF = "\n";

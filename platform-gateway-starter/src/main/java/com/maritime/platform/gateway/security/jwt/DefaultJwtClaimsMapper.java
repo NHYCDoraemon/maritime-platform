@@ -3,8 +3,6 @@ package com.maritime.platform.gateway.security.jwt;
 import com.maritime.platform.gateway.security.GatewayPrincipal;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
 import io.jsonwebtoken.Claims;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
@@ -12,8 +10,6 @@ import java.util.List;
  * Default {@link JwtClaimsMapper} that reads claim values using the
  * configurable field names from {@link GatewaySecurityProperties.Claims}.
  */
-@Component
-@ConditionalOnProperty("maritime.gateway.security.jwt.enabled")
 public class DefaultJwtClaimsMapper implements JwtClaimsMapper {
 
 	private final GatewaySecurityProperties.Claims claimsConfig;

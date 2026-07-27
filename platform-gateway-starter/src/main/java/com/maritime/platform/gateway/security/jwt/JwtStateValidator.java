@@ -1,9 +1,7 @@
 package com.maritime.platform.gateway.security.jwt;
 
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.ReactiveRedisOperations;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 
@@ -15,8 +13,6 @@ import reactor.core.publisher.Mono;
  * {@link GatewaySecurityProperties.Validation}. All checks are
  * reactive and non-blocking.
  */
-@Component
-@ConditionalOnProperty("maritime.gateway.security.jwt.enabled")
 public class JwtStateValidator {
 
     private final ReactiveRedisOperations<String, String> redisOps;

@@ -8,14 +8,11 @@ import java.util.Locale;
 import java.util.Set;
 
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.stereotype.Component;
 import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
 import org.springframework.web.util.pattern.PatternParseException;
 
-@Component
 public class RouteSecurityPolicyResolver implements InitializingBean {
 
 	private final GatewaySecurityProperties properties;
@@ -38,7 +35,6 @@ public class RouteSecurityPolicyResolver implements InitializingBean {
 		this(properties, Collections.emptyList());
 	}
 
-	@Autowired
 	public RouteSecurityPolicyResolver(GatewaySecurityProperties properties,
 	                                   List<GatewaySecurityPolicyCustomizer> customizers) {
 		this.properties = properties;

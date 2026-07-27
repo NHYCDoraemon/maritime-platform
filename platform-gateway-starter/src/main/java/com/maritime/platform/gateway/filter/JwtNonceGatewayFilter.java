@@ -9,12 +9,10 @@ import com.maritime.platform.gateway.security.jwt.GatewayAuthErrorCode;
 import com.maritime.platform.gateway.security.jwt.JwtAuthenticationException;
 import com.maritime.platform.gateway.security.nonce.JwtNonceValidator;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
@@ -27,8 +25,6 @@ import reactor.core.publisher.Mono;
  * in {@code maritime.gateway.security.jwt.nonce.required-methods}
  * (default: POST, PUT, PATCH, DELETE).
  */
-@Component
-@ConditionalOnProperty("maritime.gateway.security.jwt.enabled")
 @Order(GatewayFilterOrder.JWT_NONCE)
 public class JwtNonceGatewayFilter implements GlobalFilter, Ordered {
 

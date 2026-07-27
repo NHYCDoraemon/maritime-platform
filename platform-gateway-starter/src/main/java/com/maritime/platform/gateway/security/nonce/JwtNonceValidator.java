@@ -3,9 +3,7 @@ package com.maritime.platform.gateway.security.nonce;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
 import com.maritime.platform.gateway.security.jwt.GatewayAuthErrorCode;
 import com.maritime.platform.gateway.security.jwt.JwtAuthenticationException;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.ReactiveRedisOperations;
-import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -18,8 +16,6 @@ import java.time.Duration;
  * concurrent requests, only the first write succeeds and subsequent
  * attempts are correctly detected as replays.
  */
-@Component
-@ConditionalOnProperty("maritime.gateway.security.jwt.enabled")
 public class JwtNonceValidator {
 
 	private final ReactiveRedisOperations<String, String> redisOps;

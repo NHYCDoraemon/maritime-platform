@@ -7,10 +7,25 @@ import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
-@Configuration
+/**
+ * Legacy IAM-specific RabbitMQ topology.
+ *
+ * @deprecated IAM topology is a domain contract and will move out of
+ *     {@code platform-common-mq} in the next major version. Non-IAM consumers
+ *     should set {@code maritime.mq.iam-topology.enabled=false}.
+ */
+@Deprecated(since = "1.0.11", forRemoval = true)
+@AutoConfiguration
+@ConditionalOnProperty(
+        prefix = "maritime.mq.iam-topology",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = true)
 public class IamTopologyConfiguration {
 
     // ---- Exchanges ----
@@ -50,21 +65,25 @@ public class IamTopologyConfiguration {
     // ---- Exchange Beans ----
 
     @Bean
+    @ConditionalOnMissingBean(name = "permissionExchange")
     public TopicExchange permissionExchange() {
         return new TopicExchange(PERMISSION_EXCHANGE);
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "syncExchange")
     public TopicExchange syncExchange() {
         return new TopicExchange(SYNC_EXCHANGE);
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "cacheInvalidationExchange")
     public FanoutExchange cacheInvalidationExchange() {
         return new FanoutExchange(CACHE_INVALIDATION_EXCHANGE);
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "dlxExchange")
     public DirectExchange dlxExchange() {
         return new DirectExchange(DLX_EXCHANGE);
     }
@@ -74,6 +93,7 @@ public class IamTopologyConfiguration {
      * IAM publishes; data platform subscribes for statistics/analytics.
      */
     @Bean
+    @ConditionalOnMissingBean(name = "auditExchange")
     public TopicExchange auditExchange() {
         return new TopicExchange(AUDIT_EXCHANGE);
     }
@@ -81,6 +101,7 @@ public class IamTopologyConfiguration {
     // ---- Queue Beans ----
 
     @Bean
+    @ConditionalOnMissingBean(name = "permissionChangedQueue")
     public Queue permissionChangedQueue() {
         return QueueBuilder.durable(QUEUE_PERMISSION_CHANGED)
                 .withArgument("x-dead-letter-exchange", DLX_EXCHANGE)
@@ -89,6 +110,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "cacheInvalidationQueue")
     public Queue cacheInvalidationQueue() {
         return QueueBuilder.durable(QUEUE_CACHE_INVALIDATION)
                 .withArgument("x-dead-letter-exchange", DLX_EXCHANGE)
@@ -97,6 +119,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "syncOrgQueue")
     public Queue syncOrgQueue() {
         return QueueBuilder.durable(QUEUE_SYNC_ORG)
                 .withArgument("x-dead-letter-exchange", DLX_EXCHANGE)
@@ -105,6 +128,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "syncUserQueue")
     public Queue syncUserQueue() {
         return QueueBuilder.durable(QUEUE_SYNC_USER)
                 .withArgument("x-dead-letter-exchange", DLX_EXCHANGE)
@@ -115,21 +139,25 @@ public class IamTopologyConfiguration {
     // ---- DLX Queue Beans ----
 
     @Bean
+    @ConditionalOnMissingBean(name = "permissionChangedDlq")
     public Queue permissionChangedDlq() {
         return QueueBuilder.durable(QUEUE_PERMISSION_CHANGED_DLQ).build();
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "cacheInvalidationDlq")
     public Queue cacheInvalidationDlq() {
         return QueueBuilder.durable(QUEUE_CACHE_INVALIDATION_DLQ).build();
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "syncOrgDlq")
     public Queue syncOrgDlq() {
         return QueueBuilder.durable(QUEUE_SYNC_ORG_DLQ).build();
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "syncUserDlq")
     public Queue syncUserDlq() {
         return QueueBuilder.durable(QUEUE_SYNC_USER_DLQ).build();
     }
@@ -137,6 +165,7 @@ public class IamTopologyConfiguration {
     // ---- Bindings ----
 
     @Bean
+    @ConditionalOnMissingBean(name = "permissionChangedBinding")
     public Binding permissionChangedBinding(Queue permissionChangedQueue,
                                             TopicExchange permissionExchange) {
         return BindingBuilder.bind(permissionChangedQueue)
@@ -145,6 +174,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "positionRoleChangedBinding")
     public Binding positionRoleChangedBinding(Queue permissionChangedQueue,
                                               TopicExchange permissionExchange) {
         return BindingBuilder.bind(permissionChangedQueue)
@@ -153,6 +183,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "orgChangedBinding")
     public Binding orgChangedBinding(Queue permissionChangedQueue,
                                      TopicExchange permissionExchange) {
         return BindingBuilder.bind(permissionChangedQueue)
@@ -161,6 +192,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "appEnabledBinding")
     public Binding appEnabledBinding(Queue permissionChangedQueue,
                                      TopicExchange permissionExchange) {
         return BindingBuilder.bind(permissionChangedQueue)
@@ -169,6 +201,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "userDismissedBinding")
     public Binding userDismissedBinding(Queue permissionChangedQueue,
                                         TopicExchange permissionExchange) {
         return BindingBuilder.bind(permissionChangedQueue)
@@ -177,6 +210,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "cacheInvalidationBinding")
     public Binding cacheInvalidationBinding(Queue cacheInvalidationQueue,
                                             FanoutExchange cacheInvalidationExchange) {
         return BindingBuilder.bind(cacheInvalidationQueue)
@@ -184,11 +218,13 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "syncOrgBinding")
     public Binding syncOrgBinding(Queue syncOrgQueue, TopicExchange syncExchange) {
         return BindingBuilder.bind(syncOrgQueue).to(syncExchange).with(RK_SYNC_ORG);
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "syncUserBinding")
     public Binding syncUserBinding(Queue syncUserQueue, TopicExchange syncExchange) {
         return BindingBuilder.bind(syncUserQueue).to(syncExchange).with(RK_SYNC_USER);
     }
@@ -196,6 +232,7 @@ public class IamTopologyConfiguration {
     // ---- DLX Bindings ----
 
     @Bean
+    @ConditionalOnMissingBean(name = "permissionChangedDlqBinding")
     public Binding permissionChangedDlqBinding(Queue permissionChangedDlq,
                                                DirectExchange dlxExchange) {
         return BindingBuilder.bind(permissionChangedDlq)
@@ -204,6 +241,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "cacheInvalidationDlqBinding")
     public Binding cacheInvalidationDlqBinding(Queue cacheInvalidationDlq,
                                                DirectExchange dlxExchange) {
         return BindingBuilder.bind(cacheInvalidationDlq)
@@ -212,6 +250,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "syncOrgDlqBinding")
     public Binding syncOrgDlqBinding(Queue syncOrgDlq, DirectExchange dlxExchange) {
         return BindingBuilder.bind(syncOrgDlq)
                 .to(dlxExchange)
@@ -219,6 +258,7 @@ public class IamTopologyConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(name = "syncUserDlqBinding")
     public Binding syncUserDlqBinding(Queue syncUserDlq, DirectExchange dlxExchange) {
         return BindingBuilder.bind(syncUserDlq)
                 .to(dlxExchange)

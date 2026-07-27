@@ -10,7 +10,6 @@ import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.lang.NonNull;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -27,7 +26,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * <p>This filter runs first ({@link Ordered#HIGHEST_PRECEDENCE}) to ensure
  * the traceId is available to all downstream filters and handlers.
  */
-@Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class TraceIdFilter extends OncePerRequestFilter {
 

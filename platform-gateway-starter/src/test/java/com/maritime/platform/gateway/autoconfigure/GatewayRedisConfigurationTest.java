@@ -27,4 +27,21 @@ class GatewayRedisConfigurationTest {
             assertThat(template.getConnectionFactory()).isNotNull();
         });
     }
+
+    @Test
+    @DisplayName("backs off when the application provides its own template")
+    void backsOffForConsumerReactiveRedisTemplate() {
+        ReactiveRedisTemplate<String, String> custom =
+                org.mockito.Mockito.mock(ReactiveRedisTemplate.class);
+
+        runner.withBean(
+                        "reactiveStringRedisTemplate",
+                        ReactiveRedisTemplate.class,
+                        () -> custom)
+                .run(ctx -> {
+                    assertThat(ctx).hasSingleBean(ReactiveRedisTemplate.class);
+                    assertThat(ctx.getBean("reactiveStringRedisTemplate"))
+                            .isSameAs(custom);
+                });
+    }
 }

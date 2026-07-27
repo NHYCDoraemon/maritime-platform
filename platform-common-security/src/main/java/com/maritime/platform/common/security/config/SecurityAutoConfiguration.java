@@ -2,6 +2,7 @@ package com.maritime.platform.common.security.config;
 
 import com.maritime.platform.common.security.aspect.RequirePermissionAspect;
 import com.maritime.platform.common.security.jwt.JwtProperties;
+import com.maritime.platform.common.security.jwt.JwtTokenProvider;
 import com.maritime.platform.common.security.spi.PermissionChecker;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -19,6 +20,12 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 @EnableConfigurationProperties(JwtProperties.class)
 public class SecurityAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    JwtTokenProvider jwtTokenProvider(JwtProperties properties) {
+        return new JwtTokenProvider(properties);
+    }
 
     @Bean
     @ConditionalOnBean(PermissionChecker.class)
