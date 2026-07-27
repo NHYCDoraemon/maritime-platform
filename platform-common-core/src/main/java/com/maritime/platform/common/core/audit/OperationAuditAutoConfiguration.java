@@ -18,6 +18,7 @@ public class OperationAuditAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public OperationAuditAspect operationAuditAspect(AuditEventPublisher publisher,
                                                      AuditOperatorResolver resolver) {
         return new OperationAuditAspect(publisher, resolver);

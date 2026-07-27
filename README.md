@@ -12,7 +12,7 @@ Shared platform commons + iam-sdk for maritime microservices.
 | `platform-common-security` | JWT signing/verification, HMAC signature, SecurityUser context |
 | `platform-common-mybatis` | MyBatis-Plus config, BaseDO, auto-fill, pagination |
 | `platform-common-redis` | RedisTemplate config, distributed lock utilities |
-| `platform-common-mq` | RabbitMQ topology, publisher-confirm sender |
+| `platform-common-mq` | RabbitMQ infrastructure and legacy IAM topology compatibility |
 | `platform-common-metrics` | Micrometer + Prometheus, @BusinessMetric AOP |
 | `platform-common-notification` | Channel enum, NotificationDispatcher SPI, handler registry |
 | `platform-common-feign` | Feign client interfaces and shared DTOs for IAM intra-cluster calls |
@@ -84,3 +84,18 @@ And in your project `pom.xml` or `settings.xml`:
 |--------|-------------|
 | platform-common-* | `com.maritime.platform.common.*` |
 | iam-sdk | `com.maritime.iam.sdk.*` (IAM-branded by design) |
+
+## IAM RabbitMQ topology compatibility
+
+`platform-common-mq` still enables its legacy IAM exchanges, queues, and
+bindings by default for backward compatibility. This IAM-specific topology is
+deprecated and will move to an IAM-owned module in the next major version.
+
+Applications that do not own or consume the IAM topology should disable it:
+
+```yaml
+maritime:
+  mq:
+    iam-topology:
+      enabled: false
+```

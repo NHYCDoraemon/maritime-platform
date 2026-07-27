@@ -2,9 +2,19 @@ package com.maritime.platform.gateway.autoconfigure;
 
 import com.maritime.platform.gateway.error.DefaultGatewayErrorWriter;
 import com.maritime.platform.gateway.error.GatewayErrorWriter;
+import com.maritime.platform.gateway.filter.HmacAuthenticationGatewayFilter;
+import com.maritime.platform.gateway.filter.JwtAuthenticationGatewayFilter;
+import com.maritime.platform.gateway.filter.JwtNonceGatewayFilter;
 import com.maritime.platform.gateway.security.AuthMode;
 import com.maritime.platform.gateway.security.GatewaySecurityPolicyCustomizer;
 import com.maritime.platform.gateway.security.GatewaySecurityProperties;
+import com.maritime.platform.gateway.security.hmac.AppCredentialResolver;
+import com.maritime.platform.gateway.security.hmac.HmacAuthenticationManager;
+import com.maritime.platform.gateway.security.hmac.HmacNonceValidator;
+import com.maritime.platform.gateway.security.jwt.JwtAuthenticationManager;
+import com.maritime.platform.gateway.security.jwt.JwtClaimsMapper;
+import com.maritime.platform.gateway.security.jwt.JwtStateValidator;
+import com.maritime.platform.gateway.security.nonce.JwtNonceValidator;
 
 import java.util.List;
 
@@ -15,9 +25,11 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.data.redis.core.ReactiveRedisTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 @DisplayName("GatewayAutoConfiguration tests")
 class GatewayAutoConfigurationTest {
@@ -31,6 +43,13 @@ class GatewayAutoConfigurationTest {
     @Nested
     @DisplayName("Default beans")
     class DefaultBeans {
+
+        @Test
+        @DisplayName("does not use component scanning")
+        void doesNotUseComponentScanning() {
+            assertThat(GatewayAutoConfiguration.class.getAnnotation(
+                    ComponentScan.class)).isNull();
+        }
 
         @Test
         @DisplayName("creates default GatewayErrorWriter")
@@ -91,6 +110,75 @@ class GatewayAutoConfigurationTest {
                     return reactor.core.publisher.Mono.empty();
                 }
             }
+        }
+    }
+
+    @Nested
+    @DisplayName("Explicit security bean wiring")
+    class ExplicitSecurityBeans {
+
+        @Test
+        void createsJwtAndHmacBeansWhenEnabled() {
+            @SuppressWarnings("unchecked")
+            ReactiveRedisTemplate<String, String> redis =
+                    mock(ReactiveRedisTemplate.class);
+
+            runner.withBean(
+                            "reactiveStringRedisTemplate",
+                            ReactiveRedisTemplate.class,
+                            () -> redis)
+                    .withPropertyValues(
+                            "maritime.gateway.security.jwt.enabled=true",
+                            "maritime.gateway.security.jwt.secret="
+                                    + "test-secret-with-minimum-length-256-bits!!",
+                            "maritime.gateway.security.jwt.issuer=test-issuer",
+                            "maritime.gateway.security.hmac.enabled=true")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        assertThat(context)
+                                .hasSingleBean(JwtClaimsMapper.class)
+                                .hasSingleBean(JwtStateValidator.class)
+                                .hasSingleBean(JwtAuthenticationManager.class)
+                                .hasSingleBean(JwtNonceValidator.class)
+                                .hasSingleBean(JwtAuthenticationGatewayFilter.class)
+                                .hasSingleBean(JwtNonceGatewayFilter.class)
+                                .hasSingleBean(AppCredentialResolver.class)
+                                .hasSingleBean(HmacNonceValidator.class)
+                                .hasSingleBean(HmacAuthenticationManager.class)
+                                .hasSingleBean(HmacAuthenticationGatewayFilter.class);
+                    });
+        }
+
+        @Test
+        void publicSecurityDefaultsBackOffForConsumerBeans() {
+            @SuppressWarnings("unchecked")
+            ReactiveRedisTemplate<String, String> redis =
+                    mock(ReactiveRedisTemplate.class);
+            JwtClaimsMapper claimsMapper = mock(JwtClaimsMapper.class);
+            AppCredentialResolver credentialResolver =
+                    mock(AppCredentialResolver.class);
+
+            runner.withBean(
+                            "reactiveStringRedisTemplate",
+                            ReactiveRedisTemplate.class,
+                            () -> redis)
+                    .withBean(JwtClaimsMapper.class, () -> claimsMapper)
+                    .withBean(
+                            AppCredentialResolver.class,
+                            () -> credentialResolver)
+                    .withPropertyValues(
+                            "maritime.gateway.security.jwt.enabled=true",
+                            "maritime.gateway.security.jwt.secret="
+                                    + "test-secret-with-minimum-length-256-bits!!",
+                            "maritime.gateway.security.jwt.issuer=test-issuer",
+                            "maritime.gateway.security.hmac.enabled=true")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        assertThat(context.getBean(JwtClaimsMapper.class))
+                                .isSameAs(claimsMapper);
+                        assertThat(context.getBean(AppCredentialResolver.class))
+                                .isSameAs(credentialResolver);
+                    });
         }
     }
 

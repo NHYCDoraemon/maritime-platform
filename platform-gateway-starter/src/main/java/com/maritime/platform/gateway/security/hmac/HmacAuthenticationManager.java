@@ -5,9 +5,6 @@ import com.maritime.platform.gateway.security.GatewaySecurityProperties;
 import com.maritime.platform.gateway.security.jwt.GatewayAuthErrorCode;
 import com.maritime.platform.gateway.security.jwt.JwtAuthenticationException;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import reactor.core.publisher.Mono;
 
@@ -33,8 +30,6 @@ import java.util.HexFormat;
  *   <li>Check nonce has not been replayed via Redis SETNX (only after credential and signature pass)</li>
  * </ol>
  */
-@Component
-@ConditionalOnProperty("maritime.gateway.security.hmac.enabled")
 public class HmacAuthenticationManager {
 
 	private static final String HMAC_ALGORITHM = "HmacSHA256";
@@ -46,7 +41,6 @@ public class HmacAuthenticationManager {
 	private final AppCredentialResolver credentialResolver;
 	private final Clock clock;
 
-	@Autowired
 	public HmacAuthenticationManager(GatewaySecurityProperties properties,
 			HmacCanonicalRequestBuilder canonicalBuilder,
 			HmacNonceValidator nonceValidator,

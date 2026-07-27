@@ -4,12 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.maritime.platform.common.outbox.dataobject.OutboxEntryDO;
 import com.maritime.platform.common.outbox.mapper.OutboxEntryMapper;
 import com.maritime.platform.common.outbox.model.OutboxEntryStatus;
-import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-@Component
 public class OutboxStore {
 
     private final OutboxEntryMapper mapper;

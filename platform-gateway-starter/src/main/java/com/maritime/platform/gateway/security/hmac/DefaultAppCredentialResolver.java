@@ -4,10 +4,7 @@ import com.maritime.platform.gateway.security.GatewaySecurityProperties;
 import com.maritime.platform.gateway.security.jwt.GatewayAuthErrorCode;
 import com.maritime.platform.gateway.security.jwt.JwtAuthenticationException;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
-import org.springframework.stereotype.Component;
 
 import reactor.core.publisher.Mono;
 
@@ -25,15 +22,13 @@ import java.util.Map;
  *
  * <p>Override by declaring a custom {@link AppCredentialResolver} bean.
  */
-@Component
-@ConditionalOnMissingBean(AppCredentialResolver.class)
 public class DefaultAppCredentialResolver implements AppCredentialResolver {
 
 	private final GatewaySecurityProperties properties;
 	private final ReactiveRedisTemplate<String, String> redisTemplate;
 
 	public DefaultAppCredentialResolver(GatewaySecurityProperties properties,
-			@Autowired(required = false) ReactiveRedisTemplate<String, String> redisTemplate) {
+			ReactiveRedisTemplate<String, String> redisTemplate) {
 		this.properties = properties;
 		this.redisTemplate = redisTemplate;
 	}

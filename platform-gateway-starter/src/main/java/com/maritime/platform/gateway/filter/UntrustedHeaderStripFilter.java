@@ -9,7 +9,6 @@ import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
@@ -25,7 +24,6 @@ import reactor.core.publisher.Mono;
  * {@link HmacAuthenticationGatewayFilter} can read them before they are
  * stripped post-authentication.
  */
-@Component
 @Order(GatewayFilterOrder.UNTRUSTED_HEADER_STRIP)
 public class UntrustedHeaderStripFilter implements GlobalFilter, Ordered {
 

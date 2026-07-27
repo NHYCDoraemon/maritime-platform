@@ -3,6 +3,7 @@ package com.maritime.iam.sdk;
 import com.maritime.iam.sdk.resource.NacosResourcePublisher;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
@@ -21,6 +22,7 @@ import org.springframework.context.annotation.Bean;
 public class IamResourceAutoConfiguration {
 
     @Bean
+    @ConditionalOnMissingBean
     NacosResourcePublisher nacosResourcePublisher() {
         return new NacosResourcePublisher();
     }

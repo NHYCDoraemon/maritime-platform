@@ -7,9 +7,6 @@ import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Mono;
 
@@ -28,8 +25,6 @@ import java.util.Date;
  * (session, blacklist, user-enabled) is delegated to
  * {@link JwtStateValidator} and runs reactively.
  */
-@Component
-@ConditionalOnProperty("maritime.gateway.security.jwt.enabled")
 public class JwtAuthenticationManager {
 
 	private final GatewaySecurityProperties.Jwt jwtConfig;
@@ -39,7 +34,6 @@ public class JwtAuthenticationManager {
 	private final Clock clock;
 	private final JwtStateValidator stateValidator;
 
-	@Autowired
 	public JwtAuthenticationManager(GatewaySecurityProperties properties, JwtClaimsMapper claimsMapper,
 			JwtStateValidator stateValidator) {
 		this(properties, claimsMapper, Clock.systemUTC(), stateValidator);
