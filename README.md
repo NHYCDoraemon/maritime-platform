@@ -2,6 +2,10 @@
 
 Shared platform commons + iam-sdk for maritime microservices.
 
+`maritime-platform` is domain-neutral. It is grouped under Tozoa's “public
+platform” area in the current BookStack/Plane taxonomy only for management;
+consumer contracts must not depend on Tozoa business concepts.
+
 ## Modules
 
 | Module | Description |
@@ -13,10 +17,12 @@ Shared platform commons + iam-sdk for maritime microservices.
 | `platform-common-mybatis` | MyBatis-Plus config, BaseDO, auto-fill, pagination |
 | `platform-common-redis` | RedisTemplate config, distributed lock utilities |
 | `platform-common-mq` | RabbitMQ infrastructure and legacy IAM topology compatibility |
+| `platform-common-outbox` | Transactional outbox primitives, polling, retry, and publication contracts |
 | `platform-common-metrics` | Micrometer + Prometheus, @BusinessMetric AOP |
 | `platform-common-notification` | Channel enum, NotificationDispatcher SPI, handler registry |
 | `platform-common-feign` | Feign client interfaces and shared DTOs for IAM intra-cluster calls |
 | `platform-common-tenant` | Tenant context ThreadLocal + @RequireTenantContext AOP |
+| `platform-common-openapi` | Shared SpringDoc and Knife4j configuration |
 | `platform-gateway-starter` | Spring Cloud Gateway starter — JWT/HMAC auth, nonce replay protection, trusted header lifecycle, trace ID, rate limiting |
 | `iam-sdk` | IAM SDK Spring Boot Starter for business system integration |
 
