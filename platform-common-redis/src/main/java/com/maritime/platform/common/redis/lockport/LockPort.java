@@ -45,6 +45,18 @@ public interface LockPort {
         /** Full lock key (includes prefix, aggregate, resourceId). */
         String lockKey();
 
+        /**
+         * Extend this handle's lease while retaining the current ownership token.
+         * Implementations must never reacquire a lock that has expired or changed owner.
+         *
+         * @param leaseTime new TTL to apply when this handle still owns the lock
+         * @return {@code true} when the lease was extended; {@code false} when ownership
+         *         has already been lost or renewal is unsupported
+         */
+        default boolean renew(Duration leaseTime) {
+            return false;
+        }
+
         /** Release the lock. Safe to call multiple times. */
         void unlock();
 

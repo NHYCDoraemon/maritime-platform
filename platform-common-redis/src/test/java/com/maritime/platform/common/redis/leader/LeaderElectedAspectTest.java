@@ -2,17 +2,22 @@ package com.maritime.platform.common.redis.leader;
 
 import com.maritime.platform.common.redis.lockport.LockPort;
 import com.maritime.platform.common.redis.lockport.LockPort.LockHandle;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -34,9 +39,15 @@ class LeaderElectedAspectTest {
         aspect = new LeaderElectedAspect(lockPort);
     }
 
+    @AfterEach
+    void tearDown() {
+        aspect.close();
+    }
+
     static class ScanService {
         final AtomicInteger voidCalls = new AtomicInteger();
         final AtomicInteger returningCalls = new AtomicInteger();
+        final CountDownLatch renewalObserved = new CountDownLatch(1);
 
         @LeaderElected(name = "scan-job")
         public void runVoid() {
@@ -51,6 +62,29 @@ class LeaderElectedAspectTest {
 
         @LeaderElected(name = "configurable", waitMillis = 1000, leaseMillis = 5000)
         public void runConfigurable() {
+            voidCalls.incrementAndGet();
+        }
+
+        @LeaderElected(name = "renewable", leaseMillis = 60, renewLease = true)
+        public void runRenewable() {
+            voidCalls.incrementAndGet();
+        }
+
+        @LeaderElected(name = "slow-renewable", leaseMillis = 60, renewLease = true)
+        public void runUntilRenewed() {
+            try {
+                if (!renewalObserved.await(1, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("scheduled renewal did not run");
+                }
+                voidCalls.incrementAndGet();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while waiting for renewal", exception);
+            }
+        }
+
+        @LeaderElected(name = "invalid-renewable", leaseMillis = 0, renewLease = true)
+        public void runWithInvalidLease() {
             voidCalls.incrementAndGet();
         }
     }
@@ -141,5 +175,71 @@ class LeaderElectedAspectTest {
 
         verify(handle, times(1)).close();
         verify(handle, never()).unlock();
+    }
+
+    @Test
+    void renewalEnabled_renewsOwnedLease() {
+        LockHandle handle = mock(LockHandle.class);
+        when(handle.renew(Duration.ofMillis(60))).thenReturn(true);
+        when(lockPort.tryLock(eq("leader"), eq("renewable"), any(Duration.class), any(Duration.class)))
+                .thenReturn(Optional.of(handle));
+
+        ScanService target = new ScanService();
+        proxyOf(target).runRenewable();
+
+        assertThat(target.voidCalls.get()).isEqualTo(1);
+        verify(handle, atLeastOnce()).renew(Duration.ofMillis(60));
+        verify(handle).close();
+    }
+
+    @Test
+    void renewalEnabled_whenOwnershipLost_failsInvocation() {
+        LockHandle handle = mock(LockHandle.class);
+        when(handle.renew(Duration.ofMillis(60))).thenReturn(false);
+        when(lockPort.tryLock(eq("leader"), eq("renewable"), any(Duration.class), any(Duration.class)))
+                .thenReturn(Optional.of(handle));
+
+        ScanService target = new ScanService();
+
+        assertThatThrownBy(() -> proxyOf(target).runRenewable())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("renewable")
+                .hasMessageContaining("lost lock ownership");
+        verify(handle).close();
+    }
+
+    @Test
+    void renewalEnabled_renewsPeriodicallyBeforeMethodReturns() {
+        LockHandle handle = mock(LockHandle.class);
+        ScanService target = new ScanService();
+        when(handle.renew(Duration.ofMillis(60))).thenAnswer(invocation -> {
+            target.renewalObserved.countDown();
+            return true;
+        });
+        when(lockPort.tryLock(
+                eq("leader"), eq("slow-renewable"), any(Duration.class), any(Duration.class)))
+                .thenReturn(Optional.of(handle));
+
+        proxyOf(target).runUntilRenewed();
+
+        assertThat(target.voidCalls.get()).isEqualTo(1);
+        verify(handle, org.mockito.Mockito.atLeast(2)).renew(Duration.ofMillis(60));
+        verify(handle).close();
+    }
+
+    @Test
+    void renewalEnabled_withInvalidLease_releasesAcquiredLock() {
+        LockHandle handle = mock(LockHandle.class);
+        when(lockPort.tryLock(
+                eq("leader"), eq("invalid-renewable"), any(Duration.class), any(Duration.class)))
+                .thenReturn(Optional.of(handle));
+
+        ScanService target = new ScanService();
+
+        assertThatThrownBy(() -> proxyOf(target).runWithInvalidLease())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("leaseMillis must be positive");
+        assertThat(target.voidCalls.get()).isZero();
+        verify(handle).close();
     }
 }

@@ -40,6 +40,14 @@ public @interface LeaderElected {
     long leaseMillis() default 25000;
 
     /**
+     * When true, renew the owned lock every third of {@link #leaseMillis()} while the
+     * annotated method is running. The invocation fails after returning from the method
+     * if lock ownership was lost during execution. Default {@code false} preserves the
+     * fixed-lease behavior.
+     */
+    boolean renewLease() default false;
+
+    /**
      * When true, log skipped executions at {@code DEBUG}; when false, at {@code INFO}.
      * Default {@code true}.
      */

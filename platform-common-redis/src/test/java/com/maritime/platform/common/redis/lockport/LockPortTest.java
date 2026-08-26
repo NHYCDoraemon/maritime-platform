@@ -150,4 +150,31 @@ class LockPortTest {
 
         assertThat(redisTemplate.opsForValue().get("platform:lock:resource:R7")).isEqualTo("OTHER_TOKEN");
     }
+
+    @Test
+    void renew_extendsLeaseForCurrentOwner() throws InterruptedException {
+        Optional<LockHandle> handle = lockPort.tryLock(
+                "resource", "R8", Duration.ofMillis(100), Duration.ofMillis(200));
+        assertThat(handle).isPresent();
+
+        Thread.sleep(100L);
+        assertThat(handle.get().renew(Duration.ofMillis(400))).isTrue();
+        Thread.sleep(150L);
+
+        assertThat(lockPort.isLocked("resource", "R8")).isTrue();
+        handle.get().close();
+    }
+
+    @Test
+    void renew_doesNotExtendAnotherTokensLock() {
+        Optional<LockHandle> owner = lockPort.tryLock(
+                "resource", "R9", Duration.ofMillis(100), Duration.ofSeconds(10));
+        assertThat(owner).isPresent();
+
+        redisTemplate.opsForValue().set("platform:lock:resource:R9", "OTHER_TOKEN");
+
+        assertThat(owner.get().renew(Duration.ofSeconds(10))).isFalse();
+        assertThat(redisTemplate.getExpire("platform:lock:resource:R9")).isEqualTo(-1L);
+        assertThat(redisTemplate.opsForValue().get("platform:lock:resource:R9")).isEqualTo("OTHER_TOKEN");
+    }
 }

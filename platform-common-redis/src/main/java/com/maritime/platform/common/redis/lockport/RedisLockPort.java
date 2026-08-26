@@ -18,17 +18,22 @@ public class RedisLockPort implements LockPort {
 
     private static final String UNLOCK_SCRIPT =
             "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+    private static final String RENEW_SCRIPT =
+            "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                    + "return redis.call('pexpire', KEYS[1], ARGV[2]) else return 0 end";
 
     private static final long RETRY_INTERVAL_MILLIS = 50L;
 
     private final StringRedisTemplate redis;
     private final String keyPrefix;
     private final DefaultRedisScript<Long> unlockScript;
+    private final DefaultRedisScript<Long> renewScript;
 
     public RedisLockPort(StringRedisTemplate redis, String keyPrefix) {
         this.redis = redis;
         this.keyPrefix = keyPrefix;
         this.unlockScript = new DefaultRedisScript<>(UNLOCK_SCRIPT, Long.class);
+        this.renewScript = new DefaultRedisScript<>(RENEW_SCRIPT, Long.class);
     }
 
     private String key(String aggregate, String resourceId) {
@@ -76,6 +81,23 @@ public class RedisLockPort implements LockPort {
         @Override
         public String lockKey() {
             return key;
+        }
+
+        @Override
+        public synchronized boolean renew(Duration leaseTime) {
+            if (released) {
+                return false;
+            }
+            long leaseMillis = leaseTime.toMillis();
+            if (leaseMillis <= 0) {
+                throw new IllegalArgumentException("leaseTime must be at least one millisecond");
+            }
+            Long renewed = redis.execute(
+                    renewScript,
+                    Collections.singletonList(key),
+                    token,
+                    Long.toString(leaseMillis));
+            return Long.valueOf(1L).equals(renewed);
         }
 
         @Override
