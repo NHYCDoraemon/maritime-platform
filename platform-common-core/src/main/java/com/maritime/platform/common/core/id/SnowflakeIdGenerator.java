@@ -3,8 +3,15 @@ package com.maritime.platform.common.core.id;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.LongConsumer;
+import java.util.function.LongSupplier;
 
 public class SnowflakeIdGenerator {
+
+    public static final long DEFAULT_MAX_CLOCK_BACKWARD_MILLIS = 5_000L;
 
     private static final long EPOCH = ZonedDateTime.of(
             2024, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC
@@ -24,10 +31,38 @@ public class SnowflakeIdGenerator {
 
     private final long datacenterId;
     private final long workerId;
+    private final long maxClockBackwardMillis;
+    private final LongSupplier currentTimeMillis;
+    private final LongSupplier monotonicNanos;
+    private final LongConsumer pauseNanos;
     private long sequence = 0L;
     private long lastTimestamp = -1L;
 
     public SnowflakeIdGenerator(long datacenterId, long workerId) {
+        this(datacenterId, workerId, DEFAULT_MAX_CLOCK_BACKWARD_MILLIS);
+    }
+
+    public SnowflakeIdGenerator(
+            long datacenterId,
+            long workerId,
+            long maxClockBackwardMillis) {
+        this(
+                datacenterId,
+                workerId,
+                maxClockBackwardMillis,
+                () -> Instant.now().toEpochMilli(),
+                System::nanoTime,
+                LockSupport::parkNanos
+        );
+    }
+
+    SnowflakeIdGenerator(
+            long datacenterId,
+            long workerId,
+            long maxClockBackwardMillis,
+            LongSupplier currentTimeMillis,
+            LongSupplier monotonicNanos,
+            LongConsumer pauseNanos) {
         if (datacenterId < 0 || datacenterId > MAX_DATACENTER_ID) {
             throw new IllegalArgumentException(
                     "datacenterId must be between 0 and " + MAX_DATACENTER_ID);
@@ -36,17 +71,22 @@ public class SnowflakeIdGenerator {
             throw new IllegalArgumentException(
                     "workerId must be between 0 and " + MAX_WORKER_ID);
         }
+        if (maxClockBackwardMillis < 0) {
+            throw new IllegalArgumentException("maxClockBackwardMillis must not be negative");
+        }
         this.datacenterId = datacenterId;
         this.workerId = workerId;
+        this.maxClockBackwardMillis = maxClockBackwardMillis;
+        this.currentTimeMillis = Objects.requireNonNull(currentTimeMillis, "currentTimeMillis");
+        this.monotonicNanos = Objects.requireNonNull(monotonicNanos, "monotonicNanos");
+        this.pauseNanos = Objects.requireNonNull(pauseNanos, "pauseNanos");
     }
 
     public synchronized long nextId() {
-        long currentTimestamp = currentTimeMillis();
+        long currentTimestamp = currentTimeMillis.getAsLong();
 
         if (currentTimestamp < lastTimestamp) {
-            throw new IllegalStateException(
-                    "Clock moved backwards. Refusing to generate id for "
-                            + (lastTimestamp - currentTimestamp) + " milliseconds");
+            currentTimestamp = waitForClockRecovery(currentTimestamp);
         }
 
         if (currentTimestamp == lastTimestamp) {
@@ -67,14 +107,43 @@ public class SnowflakeIdGenerator {
     }
 
     private long waitNextMillis(long lastTimestamp) {
-        long timestamp = currentTimeMillis();
+        long timestamp = currentTimeMillis.getAsLong();
         while (timestamp <= lastTimestamp) {
-            timestamp = currentTimeMillis();
+            timestamp = currentTimeMillis.getAsLong();
         }
         return timestamp;
     }
 
-    private long currentTimeMillis() {
-        return Instant.now().toEpochMilli();
+    private long waitForClockRecovery(long currentTimestamp) {
+        long rollbackMillis = lastTimestamp - currentTimestamp;
+        if (rollbackMillis > maxClockBackwardMillis) {
+            throw clockRollbackFailure(rollbackMillis);
+        }
+
+        long startedAtNanos = monotonicNanos.getAsLong();
+        long timeoutNanos = TimeUnit.MILLISECONDS.toNanos(maxClockBackwardMillis);
+        while (currentTimestamp < lastTimestamp) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new IllegalStateException(
+                        "Interrupted while waiting for the clock to recover from a "
+                                + rollbackMillis + " millisecond rollback");
+            }
+
+            long elapsedNanos = monotonicNanos.getAsLong() - startedAtNanos;
+            if (elapsedNanos >= timeoutNanos) {
+                throw clockRollbackFailure(lastTimestamp - currentTimestamp);
+            }
+
+            long remainingNanos = timeoutNanos - elapsedNanos;
+            pauseNanos.accept(Math.min(TimeUnit.MILLISECONDS.toNanos(1), remainingNanos));
+            currentTimestamp = currentTimeMillis.getAsLong();
+        }
+        return currentTimestamp;
+    }
+
+    private IllegalStateException clockRollbackFailure(long rollbackMillis) {
+        return new IllegalStateException(
+                "Clock moved backwards. Refusing to generate id for "
+                        + rollbackMillis + " milliseconds");
     }
 }
